@@ -5,7 +5,7 @@ are welcome. Explain the problem and a concrete way to reproduce it.
 
 ## Development
 
-Use Python 3.10 or later on macOS or Linux. Windows users can use WSL.
+Use Python 3.11 or later on macOS or Linux. Windows users can use WSL.
 The helper has no third-party runtime dependencies.
 
 ```sh

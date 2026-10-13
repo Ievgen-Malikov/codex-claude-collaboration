@@ -16,11 +16,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
-            python: "3.10"
+            python: "3.11"
           - os: ubuntu-24.04
             python: "3.12"
           - os: ubuntu-24.04
             python: "3.14"
+          - os: ubuntu-24.04
+            python: "3.15"
           - os: macos-14
             python: "3.12"
     steps:
@@ -37,4 +39,4 @@ jobs:
           python -m pip install .
           agent-review-session --help
       - name: Check whitespace
-        run: git diff --check
+        run: git show --format= --check HEAD

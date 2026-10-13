@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,8 +7,9 @@ name = "codex-claude-collaboration"
 version = "0.1.0"
 description = "A file-based protocol for time-bounded review between independent coding agents."
 readme = "README.md"
-requires-python = ">=3.10"
-license = {file = "LICENSE"}
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = []
 keywords = ["codex", "claude-code", "agent-collaboration", "peer-review"]
 classifiers = [

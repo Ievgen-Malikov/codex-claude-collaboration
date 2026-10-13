@@ -225,11 +225,13 @@ class Session:
         if agent not in state["participants"]:
             raise SessionError("unknown_agent", "Use --agent agent-a or --agent agent-b; names are conventions, not authentication.")
 
-    def _active(self, state: dict[str, Any]) -> None:
+    def _active(self, state: dict[str, Any]) -> datetime:
         if state["phase"] != "ACTIVE":
             raise SessionError("not_active", "Session is not active; start it once both agents are ready, or use a new session after stop.")
-        if utc_now() >= parse_timestamp(state["deadline"]):
+        admitted_at = utc_now()
+        if admitted_at >= parse_timestamp(state["deadline"]):
             raise SessionError("expired", "The coordination deadline has passed; use stop to record the outcome.")
+        return admitted_at
 
     def _save(self, state: dict[str, Any]) -> None:
         atomic_json(self.root / STATE_FILE, state)
@@ -292,11 +294,22 @@ class Session:
                 actual.append(self._artifact(path))
             except SessionError as error:
                 actual.append({"path": path, "sha256": None, "error": str(error)})
+        # Use the hashes displayed in this view, so an external edit cannot make
+        # the artifact listing and agreement flag describe different observations.
+        observed_hashes = {item["path"]: item["sha256"] for item in actual}
+        approvals = [state["approvals"].get(agent) for agent in state["participants"]]
+        agreement_current = False
+        if all(approvals):
+            first = approvals[0]
+            agreement_current = all(
+                (item["path"], item["sha256"]) == (first["path"], first["sha256"])
+                for item in approvals
+            ) and observed_hashes.get(first["path"]) == first["sha256"]
         return {"ok": True, **state, "phase": phase, "now": timestamp(now),
                 "readiness_fresh": {agent: agent in state["readiness"] and
                                     0 <= (now - parse_timestamp(state["readiness"][agent])).total_seconds() <= READY_SECONDS
                                     for agent in state["participants"]},
-                "actual_artifacts": actual, "agreement_current": self._agreement(state) is not None}
+                "actual_artifacts": actual, "agreement_current": agreement_current}
 
     def status(self) -> dict[str, Any]:
         with self.locked() as state:
@@ -358,8 +371,11 @@ class Session:
             names = [int(match.group(1)) for path in (self.root / "messages").iterdir()
                      if (match := MESSAGE_NAME.fullmatch(path.name))]
             identifier = max(names, default=0) + 1
+            # Directory scanning can cross the deadline. Recheck admission and
+            # timestamp that same observation before the filesystem commit.
+            admitted_at = self._active(state)
             message = {"id": identifier, "session_id": state["session_id"],
-                       "agent": agent, "kind": kind, "text": text, "timestamp": timestamp(utc_now())}
+                       "agent": agent, "kind": kind, "text": text, "timestamp": timestamp(admitted_at)}
             atomic_json(self.root / "messages" / f"{identifier:08d}.json", message)
             return {"ok": True, "message": message}
 

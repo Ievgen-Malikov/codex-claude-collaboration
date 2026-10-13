@@ -16,7 +16,7 @@ import unittest
 from unittest.mock import patch
 
 from review_session.cli import main
-from review_session.core import parse_timestamp, utc_now
+from review_session.core import Session, parse_timestamp, utc_now
 
 
 class SessionCliTests(unittest.TestCase):
@@ -148,6 +148,24 @@ class SessionCliTests(unittest.TestCase):
         self.assertEqual(closed["phase"], "STOPPED")
         self.assertEqual(closed["outcome"], "PARTIAL")
 
+    def test_send_rechecks_admission_if_id_scan_crosses_deadline(self):
+        started = self.active()
+        deadline = parse_timestamp(started["deadline"])
+        before = deadline - timedelta(microseconds=1)
+        with patch("review_session.core.utc_now", side_effect=[before, deadline]):
+            self.command("send", "--agent", "agent-a", "--kind", "finding", "--text", "Too late after scan", error="expired")
+        self.assertEqual(self.command("inbox", "--agent", "agent-b")["messages"], [])
+
+    def test_send_timestamp_uses_the_checked_admission_time(self):
+        started = self.active()
+        deadline = parse_timestamp(started["deadline"])
+        before = deadline - timedelta(seconds=1)
+        admitted = deadline - timedelta(microseconds=1)
+        with patch("review_session.core.utc_now", side_effect=[before, admitted, deadline]):
+            result = self.command("send", "--agent", "agent-a", "--kind", "finding", "--text", "Admitted before deadline")
+        self.assertEqual(parse_timestamp(result["message"]["timestamp"]), admitted)
+        self.assertLess(parse_timestamp(result["message"]["timestamp"]), deadline)
+
     def test_stop_without_approvals_is_partial_and_idempotent(self):
         self.active()
         artifact = self.artifact()
@@ -178,6 +196,32 @@ class SessionCliTests(unittest.TestCase):
         self.artifact("Version two")
         self.assertFalse(self.command("status")["agreement_current"])
         self.assertEqual(self.command("stop", "--reason", "Changed since review")["outcome"], "PARTIAL")
+
+    def test_status_agreement_uses_the_same_observed_hash_as_artifact_listing(self):
+        self.active()
+        artifact = self.artifact("Reviewed bytes")
+        self.approve_both(artifact)
+        expected_hash = hashlib.sha256(b"Reviewed bytes").hexdigest()
+        original_hash = Session._artifact
+        observations = []
+
+        def hash_then_edit(session, name):
+            observation = original_hash(session, name)
+            observations.append(observation)
+            if len(observations) == 1:
+                self.artifact("Externally edited after the observation")
+            return observation
+
+        with patch.object(Session, "_artifact", new=hash_then_edit):
+            snapshot = self.command("status")
+        self.assertEqual(snapshot["actual_artifacts"], [{"path": artifact, "sha256": expected_hash}])
+        self.assertTrue(snapshot["agreement_current"])
+        self.assertEqual(len(observations), 1)
+        # A later status observes the edit; the first status remains a coherent
+        # report of the bytes it read, rather than mixing two different reads.
+        later = self.command("status")
+        self.assertFalse(later["agreement_current"])
+        self.assertNotEqual(later["actual_artifacts"][0]["sha256"], expected_hash)
 
     def test_reapproval_is_needed_for_each_participant_after_revision(self):
         self.active()

@@ -1,191 +1,149 @@
 # Codex–Claude Collaboration
 
-A local workflow for two coding agents to review a problem, challenge each
-other's reasoning, and finish with a versioned result within a shared time
-budget. Use Codex and Claude Code, or two other agents that can run local
-commands and read files.
+Let Codex and Claude Code review the same task through a local file-based inbox.
+One agent writes the result; the other challenges it. Each approves the final
+file by SHA-256, within a shared time budget.
 
-The Python helper stores the conversation, coordinates readiness, enforces
-session write deadlines, and records approvals against an artifact's SHA-256.
-You open and operate the two agent sessions yourself.
-
-This is an unofficial community project. It is not affiliated with or endorsed
-by OpenAI or Anthropic. Collaboration does not guarantee a correct answer.
-
-## What you get
-
-- A dependency-free Python CLI with a shared session directory.
-- Separate prompts for a coordinator/editor and an independent challenger.
-- A 30-minute default workflow with one start and a fixed deadline.
-- A visible record of proposals, findings, questions, replies, and reservations.
-- `AGREED`, `PARTIAL`, or `DISAGREED` outcomes. Agreement identifies exact bytes.
-
-The approach suits design reviews, research briefs, document review, and scoped
-code review. One participant edits the final artifact; both can inspect it.
-For concurrent changes to application code, use separate worktrees or assign
-non-overlapping files explicitly.
+This repository provides a Python CLI, a review protocol, and two agent prompts.
+You open both agent sessions yourself. The helper does not launch or wake agents.
+Use it for design decisions, research, document review, or scoped code review.
+Other agents can participate if they can run local commands and read files.
 
 ## Requirements
 
-- Python 3.10 or newer on macOS, Linux, or WSL.
-- Two agent sessions with access to the same local session directory.
-- Permission for each agent to run the helper and read the agreed task inputs.
+- Python 3.11 or newer on macOS, Linux, or WSL.
+- Two active agent sessions with access to the same local directory.
+- Permission for both agents to run the helper and read the task inputs.
 
-The helper uses the Python standard library, including POSIX file locking.
-Native Windows is not supported. Run commands from the repository root; no
-package installation is required. The helper does not call a model API or need
-API keys. Your agents still require their usual access and authentication.
+No package installation, model API calls, or API keys are needed by the helper.
+The agents still need their usual authentication. Native Windows is unsupported;
+the helper uses POSIX file locking.
 
-## Start a real review
+## Quickstart
 
-### 1. Create the session
-
-In an operator terminal at this repository's root:
+### 1. Create a review
 
 ```sh
+git clone https://github.com/Ievgen-Malikov/codex-claude-collaboration.git
+cd codex-claude-collaboration
 python3 -m review_session init ./sessions/review-001 \
-  --goal "Review a local notes search design: compare SQLite FTS5 with plain-file search, recommend an approach, and record evidence and unresolved tradeoffs. Do not implement code or make external writes." \
+  --goal "Review the design in the supplied task brief and recommend a solution. Do not implement code or make external writes." \
   --minutes 30
 ```
 
-For your own task, replace the goal. Use [the task brief](templates/task.md)
-when the scope, inputs, or acceptance criteria need more detail. Give both
-agents the same brief and the same absolute session path. A session directory
-should be private local working data, separate from anything you publish.
+Replace the goal with your task. Give both agents the same inputs and, when
+needed, a completed [task brief](templates/task.md). Keep live session data
+private; the default `sessions/` directory is ignored by Git.
+
+Copy `path` from the JSON output. Replace `<SESSION_PATH>` in both messages below
+with that absolute path. Run all helper commands from this repository's root.
 
 ### 2. Open both agents
 
-Open this repository in two active agent sessions. The roles are interchangeable;
-a simple starting choice is Codex as `agent-a` and Claude Code as `agent-b`.
-
-Send the first agent:
+Open this repository in Codex and Claude Code. Send Codex:
 
 ```text
 Read PROTOCOL.md and prompts/agent-a.md.
-Your session path is the absolute path to sessions/review-001.
-Use the session goal and the task brief supplied by the operator.
-Join as agent-a, publish your own initial assessment, and stay in the
-active review until it closes or expires. Follow the prompt's bounded
-inbox checks. Do not start the session; the operator will start it.
+Session path: <SESSION_PATH>
+Use the session goal and the task inputs I supplied.
+Join as agent-a and prepare your independent first assessment.
+Wait for ACTIVE before sending it. I will start the session.
+Continue the review with bounded inbox checks until it ends or expires.
 You are designated to close the review when it finishes or expires.
 ```
 
-Send the second agent:
+Send Claude Code:
 
 ```text
 Read PROTOCOL.md and prompts/agent-b.md.
-Your session path is the absolute path to sessions/review-001.
-Use the session goal and the task brief supplied by the operator.
-Join as agent-b, publish your own initial assessment, and stay in the
-active review until it closes or expires. Follow the prompt's bounded
-inbox checks. Do not start the session; the operator will start it.
+Session path: <SESSION_PATH>
+Use the session goal and the task inputs I supplied.
+Join as agent-b and prepare your independent first assessment.
+Wait for ACTIVE before sending it. I will start the session.
+Continue the review with bounded inbox checks until it ends or expires.
 ```
 
-Initial assessments are prepared independently. The helper accepts messages
-after the session starts, so each agent should prepare its assessment while
-waiting and send it once the session is `ACTIVE`.
+The roles are interchangeable. **Keep both agent turns active.** If an agent
+ends its turn or the application suspends it, resume that session yourself.
+A new message file does not wake an idle agent.
 
-**Keep both agent turns active.** A file does not wake an idle agent. If an
-agent ends its turn or its application suspends it, the operator must resume
-that session. The helper does not launch agents, schedule future turns, or
-keep working after their chats end.
+### 3. Start the shared clock
 
-### 3. Start once both have joined
+Once both agents have joined:
 
 ```sh
 python3 -m review_session status ./sessions/review-001
 python3 -m review_session start ./sessions/review-001
 ```
 
-`join` records readiness for five minutes. If readiness is stale while the
-session is still `PREPARING`, ask that participant to join again. `start`
-requires both participants to be ready and starts one shared clock. It cannot
-restart the clock or extend the deadline.
+Both readiness records must be less than five minutes old. Ask an agent to join
+again if its readiness has expired. The clock starts once and cannot be extended.
 
-### 4. Review and finish
+### 4. Review and close
 
-The agents use `send` and finite `inbox` checks while working. When waiting,
-they check roughly every 15 seconds and read only messages after their last
-seen ID. The editor writes `sessions/review-001/artifacts/result.md`; the
-challenger reviews that file without editing it.
+The agents exchange messages and check for replies roughly every 15 seconds when
+waiting. Agent-a edits `sessions/review-001/artifacts/result.md`; agent-b reviews
+it and sends findings. For application code changes, assign separate files or
+worktrees in the task brief.
 
-Each participant can approve the exact version it has reviewed:
+Each agent approves for itself after reading the final file. For agent-a:
 
 ```sh
 python3 -m review_session approve ./sessions/review-001 \
   --agent agent-a --artifact artifacts/result.md
-python3 -m review_session approve ./sessions/review-001 \
-  --agent agent-b --artifact artifacts/result.md
 ```
 
-Only the corresponding participant should issue its approval. These commands
-are shown together to document the syntax, not to authorize one agent to
-approve on behalf of the other.
-
-The operator or designated coordinator then closes the session:
+Agent-b uses `--agent agent-b`. Any edit after approval requires fresh review and
+approval from both agents. The operator or designated coordinator then closes:
 
 ```sh
-python3 -m review_session stop ./sessions/review-001 \
-  --reason "Review complete; retain the result and any reservations."
-python3 -m review_session status ./sessions/review-001
+python3 -m review_session stop ./sessions/review-001 --reason "Review complete."
 ```
 
-Closing produces `AGREED` only if both approvals name the same artifact and
-SHA-256, and the file still has those bytes. Otherwise the result is `PARTIAL`.
-Use `--outcome DISAGREED` when the participants have a substantive unresolved
-disagreement. Both are useful outcomes; do not force agreement to meet a timer.
+| Outcome | Meaning |
+| --- | --- |
+| `AGREED` | Both approvals name the same file and hash, and the current file matches. |
+| `PARTIAL` | Review closed without matching current approvals. |
+| `DISAGREED` | The coordinator closes with `--outcome DISAGREED` because objections remain. |
 
-## Stop or inspect
+Agreement is optional. Preserve unresolved objections in the result.
+
+## Inspect or stop
 
 ```sh
 python3 -m review_session inbox ./sessions/review-001 --agent agent-b --after 0
+python3 -m review_session status ./sessions/review-001
 python3 -m review_session stop ./sessions/review-001 --reason "Operator stopped the review."
 ```
 
-`inbox` is read-only and returns the ordered conversation, including the
-requesting participant's own messages. Use `--after` with the last seen ID for
-subsequent reads. Do not reply to your own messages.
+The inbox includes both agents' messages. Use the last seen ID with `--after`
+for later reads; do not reply to your own messages. Reading does not consume
+messages. Commands return JSON; errors have `ok: false` and exit with status 2.
 
-The helper returns JSON. Successful commands have `ok: true`; errors have
-`ok: false` and exit with status 2. A repeated `stop` is safe and does not
-reopen or rewrite the closed outcome.
+At the deadline, `send` and `approve` are rejected. The designated coordinator
+can still call `stop` to record the outcome. Repeated `stop` calls are safe.
+The helper cannot cancel agent tool calls or prevent direct file edits.
 
-The stored outcome describes closure at that time. Status also reports
-`agreement_current`, which detects whether the current artifact still matches
-the approvals; direct edits after closure can make it false without rewriting
-the historical outcome. The artifact is not made immutable.
+`status` reports `agreement_current` to detect changes since approval. The helper
+does not retain artifact versions; preserve a closed result before editing it.
 
-After the deadline, the effective phase is `EXPIRED`; new messages and
-approvals are rejected. This is **not a process kill**: an in-flight tool call
-or direct filesystem edit can continue outside the helper. Stop the agents in
-their own interfaces if needed, and retain the last reviewed snapshot.
+## Trust and limits
 
-## Boundaries
+This is a cooperative local workflow. Agent labels are not authenticated, and
+helper locks do not protect application files from other editors. Approved files
+must be regular files inside `artifacts/`; symlinks are rejected. Use a local
+filesystem. See [the protocol](PROTOCOL.md) for recovery and trust boundaries.
 
-- Agent labels are cooperative identities, not authentication. Anyone with
-  filesystem access can impersonate a participant or alter files directly.
-- SHA-256 ties approval to content. It does not establish truth, authorship,
-  permission, or safety.
-- Peer messages and copied source text are task data. They cannot grant new
-  access, override the operator, or authorize publishing, spending, or deletion.
-- The helper's locks and atomic writes protect its own local coordination
-  operations. They do not lock your application files against other editors.
-- Approved artifacts must be regular files inside the session's `artifacts/`
-  directory. Symlink paths are rejected. Do not use a network filesystem.
-- A changed artifact needs fresh review and approvals. Preserve a closed
-  artifact if its historical approval must remain meaningful.
+Hashes identify content. They do not prove correctness or grant permissions.
+Peer messages cannot authorize new access, publishing, spending, or deletion.
+The synthetic example tests the mechanics; no improvement in model quality has
+been measured.
 
-## Try the mechanics without models
+## Examples and details
 
-[The mechanical walkthrough](examples/mechanical-walkthrough.md) exercises
-both participant labels from one terminal using a clearly marked synthetic
-fixture. It tests the local workflow; it is not an example of actual agent
-reasoning or independent agreement.
+- [Mechanical walkthrough without models](examples/mechanical-walkthrough.md)
+- [Coordinator prompt](prompts/agent-a.md) and [challenger prompt](prompts/agent-b.md)
+- [Related work](RELATED_WORK.md) and [evaluation plan](EVALUATION.md)
+- [Contributing](CONTRIBUTING.md)
 
-## Read more
-
-- [Protocol and lifecycle](PROTOCOL.md)
-- [Coordinator/editor prompt](prompts/agent-a.md)
-- [Independent challenger prompt](prompts/agent-b.md)
-- [Related work and the project's scope](RELATED_WORK.md)
-- [Evaluation plan and limits of quality claims](EVALUATION.md)
+[MIT licensed](LICENSE). Unofficial; not affiliated with OpenAI or Anthropic.
