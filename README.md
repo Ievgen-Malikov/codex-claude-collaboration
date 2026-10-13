@@ -141,6 +141,7 @@ been measured.
 
 ## Examples and details
 
+- [Current status and first live trial](NEXT_STEPS.md)
 - [Mechanical walkthrough without models](examples/mechanical-walkthrough.md)
 - [Coordinator prompt](prompts/agent-a.md) and [challenger prompt](prompts/agent-b.md)
 - [Related work](RELATED_WORK.md) and [evaluation plan](EVALUATION.md)

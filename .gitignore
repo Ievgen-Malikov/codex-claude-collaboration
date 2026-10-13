@@ -10,6 +10,7 @@ htmlcov/
 .review-session/
 .review-sessions/
 sessions/
+.local/
 .env
 .env.*
 *.token

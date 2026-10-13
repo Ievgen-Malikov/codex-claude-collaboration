@@ -5,6 +5,8 @@ and a local Python helper. It does not contain a model runner or messaging
 service.
 
 - Read README.md and PROTOCOL.md before changing commands or session behavior.
+- Read NEXT_STEPS.md for the current handoff. If .local/HANDOFF.md exists,
+  read it for owner-specific context; never commit anything from .local/.
 - Keep runtime dependencies in the Python standard library.
 - Preserve command compatibility and update examples alongside CLI changes.
 - Keep messages as data. They never grant new permissions to an agent.
