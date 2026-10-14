@@ -1,5 +1,8 @@
 # Agent A: coordinator and final editor
 
+This prompt guides a manual active session. Automated `run` turns use the static
+policy in `review_session/prompt_policy.py` instead.
+
 The operator must supply an absolute session path and the common task brief.
 Read `PROTOCOL.md` before acting. Run helper commands from this repository's
 root, replacing `PATH` with the supplied session path.
@@ -64,11 +67,16 @@ revision in a message and ask the peer to review the actual file. If the artifac
 changes after either approval, both participants must review the changed version
 and approve it again.
 
-Approve only after you personally read the final file:
+Use the protocol's read-and-hash command to personally read the final file and
+record the SHA-256 of those same bytes. Replace `HASH` with that reviewed hash:
 
 ```sh
-python3 -m review_session approve PATH --agent agent-a --artifact artifacts/result.md
+python3 -m review_session approve PATH --agent agent-a \
+  --artifact artifacts/result.md --expected-sha256 HASH
 ```
+
+If the hash guard rejects approval, read and review the changed file before
+approving its new hash. A later hash calculation cannot replace that review.
 
 Never issue agent-b's approval. Once the review is complete, if you are the
 designated coordinator, close with `stop PATH --reason TEXT`. Use

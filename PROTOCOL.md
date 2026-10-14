@@ -6,6 +6,11 @@ define how participants review evidence and manage their work. The optional
 `run` coordinator launches bounded CLI model turns for text review. A protocol
 instruction is not an operating-system security boundary.
 
+The role prompts in `prompts/` apply to manual sessions. Automated turns use
+`review_session/prompt_policy.py` through the CLIs' native instruction channels;
+the coordinator supplies the goal, snapshots, messages, and report separately
+as task data. Changes to the manual prompts do not change automated turns.
+
 ## Roles and authority
 
 - **Operator:** supplies the goal, inputs, permissions, time budget, and scope.
@@ -135,18 +140,38 @@ merely because both agents agree it would be useful.
 
 ## Approval and closure
 
-After personally reading the current artifact, each participant can run:
+Read the current artifact and compute its hash from the same byte buffer. This
+portable command prints the hash alongside the exact UTF-8 text being reviewed:
 
 ```sh
-python3 -m review_session approve PATH --agent agent-a --artifact artifacts/result.md
+python3 - PATH/artifacts/result.md <<'PY'
+import hashlib
+from pathlib import Path
+import sys
+
+content = Path(sys.argv[1]).read_bytes()
+print("Reviewed SHA-256:", hashlib.sha256(content).hexdigest())
+print(content.decode("utf-8"), end="")
+PY
+```
+
+After personally reviewing that content, each participant approves using its
+own label and the printed hash in place of `HASH`:
+
+```sh
+python3 -m review_session approve PATH --agent agent-a \
+  --artifact artifacts/result.md --expected-sha256 HASH
 ```
 
 Approval records the artifact path and SHA-256. The path must remain inside the
 session's `artifacts/` directory; symlinks are rejected. Agent-b uses its own
 label and approves only after checking the final version and its objections.
-For a response referring to an earlier read, pass `--expected-sha256 HASH`.
-Approval is rejected if the current file differs from that hash. Automated
-approvals always use the hash supplied with the report for that review turn.
+Always pass `--expected-sha256 HASH` for the bytes you personally read. Approval
+is rejected if the current file differs from that hash. Review it again before
+approving a changed version; computing a new hash alone is insufficient.
+Automated approvals use the hash supplied with the report for that review turn.
+The helper retains bare `approve` for compatibility and synthetic mechanical
+exercises; it cannot prove that a participant read the bytes it approved.
 
 Any edit changes the reviewed version. The participants must re-read the changed
 content and issue fresh approvals. Agreement is not transferable to a different

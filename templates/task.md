@@ -1,4 +1,8 @@
-# Review task brief
+# Manual review task brief
+
+Use this brief with the active sessions and role prompts in the manual workflow.
+For automated `run`, include the evidence and acceptance criteria in UTF-8 input
+files and follow [the automated guide](../docs/AUTOMATED_REVIEW.md).
 
 ## Goal
 
@@ -36,6 +40,10 @@ List excluded features, refactors, decisions, and external actions.
 - Session budget: 30 minutes after START, unless another value was set at init.
 - START/STOP owner: operator, unless explicitly delegated to agent-a.
 - Human decisions required before using the result:
+
+Each participant approves only for itself, using `--expected-sha256` with the
+hash of the exact artifact bytes it personally reviewed, as described in the
+protocol.
 
 Both participants may report unresolved disagreement. A useful partial result
 is preferable to unsupported agreement.

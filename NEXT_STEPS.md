@@ -13,11 +13,13 @@ exercise coordination and recovery without paid model calls. These checks
 establish the behavior tested, not the quality of a two-agent answer. A live
 Codex + Claude Code trial of the automated mode has not been run.
 
-The current suite and package installation passed locally on macOS with Python
-3.12.7. The installed entry point completed a synthetic automatic review from
-outside the repository. The installed CLI parsers accepted both initial and
-resume adapter commands; Codex feature introspection confirmed the requested
-features disabled. Actual provider responses and review quality remain untested.
+Recorded checks for the initial coordinator implementation include the local
+suite and package installation on macOS with Python 3.12.7, a synthetic automatic
+review through the installed entry point from outside the repository, and CLI
+parser acceptance of initial and resume adapter commands. Codex feature
+introspection confirmed the requested features disabled. These records do not
+establish that later revisions passed; rerun the repository checks after changes.
+Actual provider responses and review quality remain untested.
 
 ## Next step
 
@@ -33,6 +35,9 @@ which objections changed the result, whether the editor preserved unresolved
 concerns, model usage, CLI and model versions, and how much operator intervention
 was needed. Check the actual final artifact and record the outcome, including
 `PARTIAL` or `DISAGREED` if warranted.
+Measure token usage, cost, and latency against the evaluation baselines; no
+efficiency gain has been established. Use those observations before expanding
+the workflow or changing how conversation context is supplied.
 For a code review, name the reviewed commit or diff in `artifacts/result.md`:
 the approval hash covers that report, not the application code.
 

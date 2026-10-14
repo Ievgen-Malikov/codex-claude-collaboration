@@ -5,6 +5,12 @@ the supplied UTF-8 text and produces `artifacts/result.md`. It requires Python
 3.11 or later, a local POSIX filesystem, and recent CLIs already signed in.
 The Python implementation uses only the standard library.
 
+Automated turns use the static policy in `review_session/prompt_policy.py`
+through Codex's developer instructions and Claude Code's appended system
+prompt. The goal, source snapshots, peer messages, and report remain separate
+user prompt data. The Markdown role prompts in `prompts/` and the repository's
+`AGENTS.md` guide manual sessions and contributors; `run` does not load them.
+
 Model turns consume your providers' quota. The task and input snapshots are sent
 to both providers through those CLIs. Choose inputs you are authorized to share.
 The coordinator runs in the foreground; keep the computer awake and the process
@@ -35,6 +41,9 @@ with tool and customization flags disabled. This mode is scoped to reviewing
 the supplied evidence and proposing a report; repository reads, browsing,
 tests, and application edits require a separately authorized workflow. Verify
 claims about checks against the evidence supplied.
+Reports must attribute evidence of prior tests to its source and mark proposed
+runtime checks as unrun. The agents can inspect text during a turn; they cannot
+execute tests or independently verify supplied claims about prior test runs.
 
 | Option | Meaning |
 | --- | --- |
@@ -78,8 +87,9 @@ requires fresh verdicts for the revised hash.
 The coordinator waits on local processes; it never calls a model merely to
 check for messages. Progress goes to stderr and the final command result is
 JSON. The existing session commands remain available in another terminal:
-On failure, stdout is empty, the last stderr line is a JSON error, and the exit
-status is 2. Earlier stderr lines describe progress.
+On failure, stdout is empty, stderr contains a JSON error record, and the exit
+status is 2. Other stderr lines can describe progress or host diagnostics;
+consumers should identify the error record rather than assume it is the last line.
 
 ```sh
 python3 -m review_session status ./sessions/automated-001
@@ -166,3 +176,6 @@ observable coordination, bounded execution, report hashes, and recovery without
 paid model calls. A live trial with both providers has not yet been run. CLI
 compatibility and review quality should be measured in that trial before
 claiming an improvement; see [the evaluation plan](../EVALUATION.md).
+No reduction in tokens, cost, or latency has been measured. The coordinator
+resumes provider conversations and supplies complete turn context; measure this
+overhead during the pilot before changing context delivery or adding machinery.

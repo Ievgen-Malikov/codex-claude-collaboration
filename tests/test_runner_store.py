@@ -9,7 +9,7 @@ from unittest.mock import patch
 from review_session.core import Session, SessionError, initialize
 from review_session.cli import main
 from review_session.runner import artifact_text, publish_artifact
-from review_session.runner_store import MAX_TEXT_BYTES, configuration, read_input, sha256
+from review_session.runner_store import MAX_TEXT_BYTES, configuration, prepare_job_directory, read_input, sha256
 
 
 class RunnerFileTests(unittest.TestCase):
@@ -72,6 +72,37 @@ class RunnerFileTests(unittest.TestCase):
                     code = main(['run', str(target), '--goal', 'Review', '--input', str(source), option, ''])
                 self.assertEqual(code, 2)
                 self.assertFalse(target.exists())
+
+    def test_preparation_rejects_empty_and_symlinked_provider_logs(self):
+        for filename in ('stdout.jsonl', 'stderr.log'):
+            for symlink in (False, True):
+                with self.subTest(provider_log=filename, symlink=symlink):
+                    root = self.root / (filename + str(symlink))
+                    root.mkdir()
+                    directory = prepare_job_directory(root, 'proposal-agent-a')
+                    evidence = directory / filename
+                    if symlink:
+                        evidence.symlink_to(root / 'missing-log')
+                    else:
+                        evidence.touch()
+                    with self.assertRaises(SessionError) as error:
+                        prepare_job_directory(root, 'proposal-agent-a')
+                    self.assertEqual(error.exception.code, 'runner_outcome_unknown')
+                    self.assertTrue(evidence.is_symlink() if symlink else evidence.is_file())
+
+    def test_preparation_rejects_symlinked_parent_or_turn_directory(self):
+        for component in ('.runner', '.runner/proposal-agent-a'):
+            with self.subTest(component=component):
+                root = self.root / ('parent-link' if component == '.runner' else 'turn-link')
+                root.mkdir()
+                outside = root / 'outside'
+                outside.mkdir()
+                link = root / component
+                link.parent.mkdir(exist_ok=True)
+                link.symlink_to(outside, target_is_directory=True)
+                with self.assertRaises(OSError):
+                    prepare_job_directory(root, 'proposal-agent-a')
+                self.assertEqual(list(outside.iterdir()), [])
 
     def test_report_publication_is_idempotent_and_preserves_changed_report(self):
         session = self.session()

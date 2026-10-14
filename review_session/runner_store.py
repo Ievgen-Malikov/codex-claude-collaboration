@@ -159,6 +159,9 @@ def validate(data: Any, session_id: str | None = None) -> None:
             raise ValueError("Job ID does not match its stage, round and participant")
         if job["status"] not in ("running", "completed", "applied", "failed"):
             raise ValueError("Invalid job status")
+        if "error" in job and (job["status"] != "failed" or not isinstance(job["error"], str)
+                               or not job["error"].strip()):
+            raise ValueError("Invalid failed job reason")
         parse_timestamp(job["started_at"])
         for field in ("message_ids", "peer_message_ids"):
             values = job[field]
@@ -193,6 +196,34 @@ def load(root: Path, session_id: str | None = None) -> dict:
 def save(root: Path, data: dict) -> None:
     validate(data)
     atomic_json(root / RUNNER_FILE, data)
+
+
+def prepare_job_directory(root: Path, identifier: str) -> Path:
+    """Reuse only unjournaled preparation; provider logs make a retry unsafe."""
+    if not JOB_ID.fullmatch(identifier):
+        raise SessionError("invalid_runner", "Invalid turn directory identifier.")
+    parent = root / ".runner"
+    parent.mkdir(mode=0o700, exist_ok=True)
+    parent_fd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        try:
+            os.mkdir(identifier, mode=0o700, dir_fd=parent_fd)
+        except FileExistsError:
+            pass
+        directory_fd = os.open(identifier, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+                               dir_fd=parent_fd)
+        try:
+            for name in ("stdout.jsonl", "stderr.log"):
+                try:
+                    os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+                except FileNotFoundError:
+                    continue
+                raise SessionError("runner_outcome_unknown", "Unjournaled turn has provider logs; inspect and preserve them before starting a fresh review. No model call was retried.")
+        finally:
+            os.close(directory_fd)
+    finally:
+        os.close(parent_fd)
+    return parent / identifier
 
 
 @contextmanager

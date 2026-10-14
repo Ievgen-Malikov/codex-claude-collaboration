@@ -12,16 +12,16 @@ SESSION_ID = "11111111-2222-4333-8444-555555555555"
 RESPONSE = {"message": "Synthetic review.", "artifact": "", "verdict": "comment", "reviewed_sha256": ""}
 
 
-def codex_output(response=None, extra_events=()):
+def codex_output(response=None, extra_events=(), ensure_ascii=True):
     events = [
         {"type": "thread.started", "thread_id": SESSION_ID},
         {"type": "turn.started"},
         {"type": "item.completed", "item": {"type": "reasoning", "text": "Synthetic thought."}},
-        {"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(response or RESPONSE)}},
+        {"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps(response or RESPONSE, ensure_ascii=ensure_ascii)}},
         *extra_events,
         {"type": "turn.completed", "usage": {"input_tokens": 1, "output_tokens": 1}},
     ]
-    return "\n".join(json.dumps(event) for event in events)
+    return "\n".join(json.dumps(event, ensure_ascii=ensure_ascii) for event in events)
 
 
 def claude_output(response=None, **fields):
@@ -111,6 +111,14 @@ class AdapterTests(unittest.TestCase):
     def test_codex_uses_last_completed_agent_message(self):
         output = codex_output(extra_events=[{"type": "item.completed", "item": {"type": "agent_message", "text": json.dumps({**RESPONSE, "message": "Final synthetic reply."})}}])
         self.assertEqual(Adapter("codex", "codex").decode(output)[1]["message"], "Final synthetic reply.")
+
+    def test_codex_jsonl_preserves_literal_unicode_line_separators_inside_strings(self):
+        for separator in ('\u0085', '\u2028', '\u2029'):
+            with self.subTest(separator=repr(separator)):
+                response = {**RESPONSE, 'message': 'Before' + separator + 'after'}
+                output = codex_output(response, ensure_ascii=False)
+                self.assertIn(separator, output)
+                self.assertEqual(Adapter('codex', 'codex').decode(output), (SESSION_ID, response))
 
     def test_codex_rejects_failures_and_tool_requests(self):
         adapter = Adapter("codex", "codex")

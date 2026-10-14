@@ -101,12 +101,36 @@ class RunnerTests(unittest.TestCase):
             code = main(args)
         if error:
             self.assertEqual(code, 2, (stdout.getvalue(), stderr.getvalue()))
-            # Progress goes to stderr before the one final JSON error.
-            value = json.loads(stderr.getvalue().splitlines()[-1])
+            self.assertEqual(stdout.getvalue(), '')
+            self.assertNotIn('Traceback', stderr.getvalue(), stderr.getvalue())
+            # In-process tests share Python warning/finalizer diagnostics with
+            # the CLI. Read its error record, not the last diagnostic line.
+            records = []
+            for line in stderr.getvalue().split('\n'):
+                try:
+                    candidate = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(candidate, dict) and candidate.get('ok') is False and 'error' in candidate:
+                    records.append(candidate)
+            self.assertEqual(len(records), 1, stderr.getvalue())
+            value = records[0]
             self.assertEqual(value['error']['code'], error)
             return value
         self.assertEqual(code, 0, stderr.getvalue())
         return json.loads(stdout.getvalue())
+
+    def test_cli_error_record_is_preserved_with_a_trailing_stderr_diagnostic(self):
+        original = main
+        self.input.write_text('{"malformed":true}')
+        def command_then_diagnostic(arguments):
+            result = original(arguments)
+            print('RuntimeWarning: synthetic host diagnostic', file=sys.stderr)
+            return result
+        with patch(__name__ + '.main', side_effect=command_then_diagnostic) as patched_main:
+            result = self.command(self.arguments(), error='runner_response')
+        patched_main.assert_called_once()
+        self.assertEqual(result['error']['code'], 'runner_response')
 
     def calls(self):
         return [json.loads(line) for line in (self.root / 'calls.jsonl').read_text().splitlines()]
@@ -233,11 +257,22 @@ class RunnerTests(unittest.TestCase):
         process = subprocess.Popen([sys.executable, '-m', 'review_session', *self.arguments()],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.addCleanup(lambda: process.kill() if process.poll() is None else None)
-        self.wait_for(lambda: (self.root / 'calls.jsonl').exists())
+        self.wait_for(lambda: (self.root / 'calls.jsonl').exists() and len(self.calls()) == 2)
+        self.wait_for(lambda: all(job['pid'] is not None for job in self.journal()['jobs'].values()))
+        original_pids = {identifier: job['pid'] for identifier, job in self.journal()['jobs'].items()}
         Session(str(self.session_path)).stop('Operator stopped')
         stdout, stderr = process.communicate(timeout=5)
         self.assertEqual(process.returncode, 0, stderr)
-        self.assertEqual(json.loads(stdout)['stop_reason'], 'Operator stopped')
+        result = json.loads(stdout)
+        self.assertEqual(result['stop_reason'], 'Operator stopped')
+        self.assertEqual(result['runner']['status'], 'complete')
+        self.assertEqual(result['runner']['jobs']['running'], 0)
+        self.assertEqual(result['runner']['jobs']['failed'], 2)
+        for identifier, job in self.journal()['jobs'].items():
+            self.assertEqual(job['status'], 'failed')
+            self.assertEqual(job['pid'], original_pids[identifier])
+            self.assertIn('stopped', job['error'])
+            self.assertIn('terminated', job['error'])
         count = len(self.calls())
         time.sleep(.1)
         self.assertEqual(count, len(self.calls()))
@@ -291,6 +326,45 @@ class RunnerTests(unittest.TestCase):
         for pid in child_pids:
             os.kill(pid, 0)  # A stale PID is evidence, never a runner cancellation target.
         Session(str(self.session_path)).stop('Synthetic unknown outcome cleanup')
+
+    def checkpoint_during_preparation(self, filename):
+        from review_session.runner import atomic_json
+
+        def interrupted_save(path, value):
+            if path.name == filename:
+                raise SystemExit('Synthetic hard crash during turn preparation')
+            atomic_json(path, value)
+
+        with patch('review_session.runner.atomic_json', new=interrupted_save), self.assertRaises(SystemExit):
+            self.command(self.arguments())
+        self.assertEqual(Session(str(self.session_path)).status()['phase'], 'ACTIVE')
+        self.assertEqual(self.journal()['jobs'], {})
+        self.assertFalse((self.root / 'calls.jsonl').exists())
+
+    def test_unjournaled_preparation_resumes_without_repeating_a_model_call(self):
+        for filename in ('prompt.json', 'schema.json'):
+            with self.subTest(interrupted_file=filename):
+                self.session_path = self.root / filename
+                self.checkpoint_during_preparation(filename)
+                result = self.command(['run', str(self.session_path), '--resume'])
+                self.assertEqual(result['outcome'], 'AGREED')
+                calls = self.calls()
+                self.assertEqual(len(calls), 5)
+                self.assertEqual(sum(item['stage'] == 'proposal' for item in calls), 2)
+                (self.root / 'calls.jsonl').unlink()
+
+    def test_unjournaled_provider_logs_are_preserved_and_block_new_calls(self):
+        for filename in ('stdout.jsonl', 'stderr.log'):
+            with self.subTest(provider_log=filename):
+                self.session_path = self.root / filename
+                self.checkpoint_during_preparation('schema.json')
+                directory = self.session_path / '.runner/proposal-agent-a'
+                (directory / filename).write_bytes(b'Synthetic evidence of an unknown invocation\n')
+                before = {path.name: path.read_bytes() for path in directory.iterdir() if path.is_file()}
+                self.command(['run', str(self.session_path), '--resume'], error='runner_outcome_unknown')
+                after = {path.name: path.read_bytes() for path in directory.iterdir() if path.is_file()}
+                self.assertEqual(after, before)
+                self.assertFalse((self.root / 'calls.jsonl').exists())
 
     def checkpoint_after_first_durable_message(self):
         original = Session.send

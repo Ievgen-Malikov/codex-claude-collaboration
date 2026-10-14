@@ -14,6 +14,7 @@ import re
 import uuid
 
 from .core import SessionError
+from .prompt_policy import AUTOMATED_POLICY
 
 
 RESPONSE_SCHEMA = {
@@ -103,6 +104,7 @@ class Adapter:
             for setting in ('web_search="disabled"', "mcp_servers={}",
                             "tools.view_image=false", "project_doc_max_bytes=0"):
                 command += ["--config", setting]
+            command += ["--config", "developer_instructions=" + json.dumps(AUTOMATED_POLICY)]
             command += ["exec"]
             if session_id is not None:
                 command += ["resume"]
@@ -113,6 +115,8 @@ class Adapter:
             return command + ([session_id] if session_id is not None else []) + ["-"]
         command = [self.executable, "-p", "--output-format", "json", "--json-schema",
                    json.dumps(RESPONSE_SCHEMA, separators=(",", ":")), "--tools", "",
+                   "--append-system-prompt", AUTOMATED_POLICY,
+                   "--system-prompt-snapshot", "off",
                    "--safe-mode", "--restricted", "--strict-mcp-config", "--mcp-config",
                    '{"mcpServers":{}}', "--disallowedTools", "mcp__*", "--setting-sources", "",
                    "--settings", '{"disableAllHooks":true}',
@@ -142,7 +146,9 @@ class Adapter:
             session_id = None
             response = None
             completed = False
-            for line in stdout.splitlines():
+            # JSONL records use LF. Other Unicode line separators may occur
+            # literally inside valid JSON strings and must remain unchanged.
+            for line in stdout.split('\n'):
                 if not line.strip():
                     continue
                 event = _json(line)

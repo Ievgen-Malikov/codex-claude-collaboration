@@ -5,6 +5,9 @@ One agent writes the result; the other challenges it. Each approves the final
 file by SHA-256, within a shared time budget.
 
 This repository provides a Python CLI, a review protocol, and two agent prompts.
+The Markdown role prompts guide manual sessions. Automated `run` turns use the
+static policy in `review_session/prompt_policy.py` through each CLI's native
+instruction channel, with task and peer material supplied separately as data.
 The optional `run` command launches Codex and Claude Code turns automatically
 to review supplied text and produce a local report. The manual workflow lets
 you coordinate two active sessions yourself, including scoped code reviews.
@@ -122,15 +125,33 @@ waiting. Agent-a edits `sessions/review-001/artifacts/result.md`; agent-b review
 it and sends findings. For application code changes, assign separate files or
 worktrees in the task brief.
 
-Each agent approves for itself after reading the final file. For agent-a:
+Each agent reads the final file and records the hash of those same bytes. This
+portable Python command prints the SHA-256 and text from one read:
+
+```sh
+python3 - ./sessions/review-001/artifacts/result.md <<'PY'
+import hashlib
+from pathlib import Path
+import sys
+
+content = Path(sys.argv[1]).read_bytes()
+print("Reviewed SHA-256:", hashlib.sha256(content).hexdigest())
+print(content.decode("utf-8"), end="")
+PY
+```
+
+After personally reviewing the printed content, copy its hash as `HASH` and
+approve using your own label. For agent-a:
 
 ```sh
 python3 -m review_session approve ./sessions/review-001 \
-  --agent agent-a --artifact artifacts/result.md
+  --agent agent-a --artifact artifacts/result.md --expected-sha256 HASH
 ```
 
-Agent-b uses `--agent agent-b`. Any edit after approval requires fresh review and
-approval from both agents. The operator or designated coordinator then closes:
+Agent-b performs its own read and uses `--agent agent-b`. If the file changed,
+approval is rejected; read and review it again before approving the new hash.
+Any edit after approval requires fresh review and approval from both agents.
+The operator or designated coordinator then closes:
 
 ```sh
 python3 -m review_session stop ./sessions/review-001 --reason "Review complete."
