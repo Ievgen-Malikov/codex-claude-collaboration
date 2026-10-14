@@ -30,6 +30,7 @@ LOCK_FILE = ".review-session.lock"
 LOCK_TIMEOUT_SECONDS = 3.0
 READY_SECONDS = 300
 MESSAGE_NAME = re.compile(r"([0-9]+)\.json\Z")
+OPERATION_ID = re.compile(r"[A-Za-z0-9._:-]{1,128}\Z")
 
 
 class SessionError(Exception):
@@ -351,31 +352,52 @@ class Session:
                         or item.get("agent") not in PARTICIPANTS or item.get("kind") not in KINDS
                         or not isinstance(item.get("text"), str)):
                     raise ValueError("Invalid message fields")
+                if "operation_id" in item and (not isinstance(item["operation_id"], str)
+                                                or not OPERATION_ID.fullmatch(item["operation_id"])):
+                    raise ValueError("Invalid message operation ID")
                 parse_timestamp(item.get("timestamp"))
                 messages.append(item)
             return messages
         except (ValueError, TypeError, OSError):
             raise SessionError("invalid_messages", "A message file is unreadable or invalid; preserve the session and inspect messages/.") from None
 
-    def send(self, agent: str, kind: str, text: str) -> dict[str, Any]:
+    def send(self, agent: str, kind: str, text: str, operation_id: str | None = None) -> dict[str, Any]:
         nonempty(text, "Message text")
         if len(text.encode("utf-8")) > 65536:
             raise SessionError("invalid_argument", "Message exceeds 65536 UTF-8 bytes; put long material in artifacts/.")
         if kind not in KINDS:
             raise SessionError("invalid_argument", "Unknown message kind.")
+        if operation_id is not None and (not isinstance(operation_id, str) or not OPERATION_ID.fullmatch(operation_id)):
+            raise SessionError("invalid_argument", "Operation ID must be 1–128 ASCII letters, digits, or . _ : - characters.")
         with self.locked() as state:
             self._agent(state, agent)
             self._active(state)
             # Derive the next ID from committed files, so an interrupted write
             # cannot make a future send reuse an already published message ID.
-            names = [int(match.group(1)) for path in (self.root / "messages").iterdir()
-                     if (match := MESSAGE_NAME.fullmatch(path.name))]
+            if operation_id is not None:
+                messages = self._messages(state)
+                for item in messages:
+                    if item.get("operation_id") == operation_id:
+                        # A retry does not publish again, but is still a send
+                        # and must remain inside the active coordination window.
+                        self._active(state)
+                        if (item["agent"], item["kind"], item["text"]) != (agent, kind, text):
+                            raise SessionError("operation_conflict", "Operation ID already belongs to a different message; preserve the original and use a new ID.")
+                        return {"ok": True, "message": item}
+                names = [item["id"] for item in messages]
+            else:
+                # Manual sends retain their lightweight filename scan and
+                # their original record shape when no operation ID is supplied.
+                names = [int(match.group(1)) for path in (self.root / "messages").iterdir()
+                         if (match := MESSAGE_NAME.fullmatch(path.name))]
             identifier = max(names, default=0) + 1
             # Directory scanning can cross the deadline. Recheck admission and
             # timestamp that same observation before the filesystem commit.
             admitted_at = self._active(state)
             message = {"id": identifier, "session_id": state["session_id"],
                        "agent": agent, "kind": kind, "text": text, "timestamp": timestamp(admitted_at)}
+            if operation_id is not None:
+                message["operation_id"] = operation_id
             atomic_json(self.root / "messages" / f"{identifier:08d}.json", message)
             return {"ok": True, "message": message}
 
@@ -388,13 +410,30 @@ class Session:
             return {"ok": True, "session_id": state["session_id"], "agent": agent,
                     "after": after, "messages": messages}
 
-    def approve(self, agent: str, artifact: str) -> dict[str, Any]:
+    def approve(self, agent: str, artifact: str, expected_sha256: str | None = None,
+                expected_peer_ids: list[int] | None = None) -> dict[str, Any]:
+        if expected_sha256 is not None and (not isinstance(expected_sha256, str)
+                                            or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256)):
+            raise SessionError("invalid_argument", "Expected SHA-256 must contain exactly 64 lowercase hexadecimal characters.")
+        if expected_peer_ids is not None and (not isinstance(expected_peer_ids, list)
+                or any(type(value) is not int or value <= 0 for value in expected_peer_ids)
+                or expected_peer_ids != sorted(set(expected_peer_ids))):
+            raise SessionError("invalid_argument", "Expected peer message IDs must be a sorted list of unique positive integers.")
         with self.locked() as state:
             self._agent(state, agent)
             self._active(state)
-            approval = {**self._artifact(artifact), "timestamp": timestamp(utc_now())}
+            if expected_peer_ids is not None:
+                peer_ids = [item["id"] for item in self._messages(state) if item["agent"] != agent]
+                if peer_ids != expected_peer_ids:
+                    raise SessionError("runner_context_changed", "Peer messages changed since the review snapshot; read the current discussion before approving.")
+            # The same lock covers peer context, observed bytes and publication
+            # of the approval, so cooperating senders cannot race admission.
+            observed = self._artifact(artifact)
+            if expected_sha256 is not None and observed["sha256"] != expected_sha256:
+                raise SessionError("artifact_changed", "Artifact no longer matches the reviewed SHA-256; read the current version before approving.")
             # Hashing a large file may cross the deadline; validate again before writing.
-            self._active(state)
+            admitted_at = self._active(state)
+            approval = {**observed, "timestamp": timestamp(admitted_at)}
             state["approvals"][agent] = approval
             self._save(state)
             return {"ok": True, "session_id": state["session_id"], "agent": agent, "approval": approval}

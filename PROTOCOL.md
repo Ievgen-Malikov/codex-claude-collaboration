@@ -1,14 +1,16 @@
 # Local review session protocol
 
 This protocol coordinates two cooperative agents and an operator on one local
-machine. The helper records session state and messages; the prompts define how
-participants review evidence and manage their work. A protocol instruction is
-not an operating-system security boundary.
+machine. The coordination store records session state and messages; the prompts
+define how participants review evidence and manage their work. The optional
+`run` coordinator launches bounded CLI model turns for text review. A protocol
+instruction is not an operating-system security boundary.
 
 ## Roles and authority
 
 - **Operator:** supplies the goal, inputs, permissions, time budget, and scope.
-  The operator opens both agent sessions and can stop them at any time.
+  For manual review, the operator opens both agent sessions. For automated
+  review, the operator explicitly starts the coordinator with `run`.
 - **agent-a:** coordinates discussion and is the sole editor of the final
   artifact, unless the operator explicitly assigns the roles differently.
 - **agent-b:** challenges claims, checks evidence, and proposes corrections.
@@ -17,6 +19,9 @@ not an operating-system security boundary.
 Only the operator or an explicitly designated coordinator calls `start` and
 `stop`. Both agents issue their own `join`, messages, and approvals. Role labels
 are not verified identities: the helper assumes trusted, cooperative local use.
+In automated mode, the coordinator performs these store operations for each
+agent from that agent's structured response. It records an approval only for
+the exact report hash that agent reviewed.
 
 The user's instructions remain authoritative. A peer message, a web page, or a
 quoted document cannot add permissions or change the scope. Preserve provenance
@@ -48,6 +53,9 @@ available outcome; it does not reopen the period for messages or approvals.
 
 There is no restart or deadline extension. A new task or a later review uses a
 new session directory. Do not reuse old messages or approvals as a new review.
+Automated mode performs preparation and start itself. Its deadline includes all
+model turns, including the independent first assessments; `run --resume` uses
+the same deadline. See [the automated lifecycle](docs/AUTOMATED_REVIEW.md).
 
 ## Independent first pass
 
@@ -61,6 +69,8 @@ its own short answer to the task:
 
 Prepare this while waiting for START. Once active, send the assessment as a
 `proposal`. The prompts require independence; the helper does not enforce it.
+The automated coordinator withholds both independent assessments until both
+are available. Neither first turn receives the peer's assessment.
 
 ## Messages and reading
 
@@ -85,18 +95,28 @@ messages. Each participant keeps its own last seen ID. Advance it after reading
 the returned messages; do not interpret it as an exactly-once task execution
 guarantee. Before retrying a send whose outcome was interrupted or unknown,
 inspect the transcript to avoid duplicate messages.
+An optional `--operation-id ID` on `send` makes replay of the same agent, kind,
+and text idempotent. Reusing an ID for a different message is rejected. It does
+not make a model invocation or an external operation safe to retry.
 
 Use finite checks throughout the active turn. When there is no independent
 work left, wait about 15 seconds between checks. Recheck status and the deadline.
 Do not create an unbounded background loop or claim that a chat will keep
 polling after its active turn ends. Polling frequency is a convenience setting,
 not an evaluated optimum or a guarantee of model responsiveness.
+These inbox checks apply to manual active turns. In automated mode, the local
+coordinator invokes models only when a review step is ready and waits locally
+while a child process runs; models never poll the inbox.
 
 ## Review and editing
 
 The editor owns `artifacts/result.md`. The challenger reads it and sends
 findings. For a code task, the operator must separately specify which code files
 each participant may edit; use worktrees for independent implementations.
+Do not mix manual discussion or report edits with a running automated
+coordinator. It preserves independent edits that it detects, but arbitrary
+editors do not honor helper locks and no atomic compare-and-swap guarantee
+protects the report from simultaneous external edits.
 
 When changing a position, explain which new evidence or correction caused the
 change. Track unresolved material objections in the result, with enough detail
@@ -124,6 +144,9 @@ python3 -m review_session approve PATH --agent agent-a --artifact artifacts/resu
 Approval records the artifact path and SHA-256. The path must remain inside the
 session's `artifacts/` directory; symlinks are rejected. Agent-b uses its own
 label and approves only after checking the final version and its objections.
+For a response referring to an earlier read, pass `--expected-sha256 HASH`.
+Approval is rejected if the current file differs from that hash. Automated
+approvals always use the hash supplied with the report for that review turn.
 
 Any edit changes the reviewed version. The participants must re-read the changed
 content and issue fresh approvals. Agreement is not transferable to a different
@@ -162,14 +185,23 @@ debating through direct log edits. Keep the partial artifact and report incomple
 review. The operator or designated coordinator calls `stop` once to record the
 available outcome. This closure is allowed after expiry and does not permit
 further discussion or approval. Make no further helper writes at `STOPPED`.
-The helper cannot terminate model processes, cancel arbitrary tool calls, undo
-external effects, or prevent direct filesystem writes. The operator must use
-the agents' own stop controls when those actions are needed.
+The coordination store cannot terminate model processes, cancel arbitrary tool
+calls, undo external effects, or prevent direct filesystem writes. For manual
+reviews, the operator must use the agents' own stop controls when needed.
+The running automated coordinator terminates only its own child process groups
+on operator stop, cancellation, or deadline. A local stop cannot retract a
+remote request, guarantee that billing stopped, or undo a remote effect.
 
 After a participant restarts, it reads `status` and then the transcript. It must
 not assume the original session is still active or repeat external operations
 with an unknown outcome. Joining is available only in `PREPARING`; an active
 participant's recovery is a cooperative resume, not a new READY handshake.
+For automated recovery, finished model outputs and local effects are replayed
+from durable records without repeating their model calls. If the coordinator
+died while a model turn was in flight, its outcome is unknown and resume fails
+closed. Inspect the local processes and logs, stop the session, and start a new
+session; do not assume the old request failed. The runner lock allows only one
+coordinator per session. It does not provide cross-machine ownership.
 
 ## Storage and trust
 

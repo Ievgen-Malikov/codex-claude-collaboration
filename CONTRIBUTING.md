@@ -18,6 +18,13 @@ Add regression coverage for behavioral changes. In particular, check expired
 sessions, late messages, interrupted writes, simultaneous senders, and files
 changed after approval. Update the CLI instructions when commands change.
 
+For automated review, use synthetic subprocess fixtures for CLI boundaries;
+routine tests must not use credentials or paid model calls. Cover coordinator
+ownership, process cancellation, completed-output replay, unknown in-flight
+outcomes, input snapshots, and approvals for the reviewed hash. Preserve manual
+command compatibility. Document runner options and recovery in
+[the automated guide](docs/AUTOMATED_REVIEW.md).
+
 ## Examples and evaluation
 
 Label simulated conversations as synthetic. Do not publish private logs or

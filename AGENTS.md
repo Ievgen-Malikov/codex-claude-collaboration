@@ -1,8 +1,8 @@
 # Repository guidance
 
 This repository contains a small collaboration protocol, prompt templates,
-and a local Python helper. It does not contain a model runner or messaging
-service.
+a local Python coordination store, and an opt-in coordinator for CLI model
+turns. It does not contain a messaging service.
 
 - Read README.md and PROTOCOL.md before changing commands or session behavior.
 - Read NEXT_STEPS.md for the current handoff. If .local/HANDOFF.md exists,
@@ -14,7 +14,13 @@ service.
 - Keep all published examples synthetic and explicitly labeled.
 - Do not commit live session state, tokens, credentials, or private task material.
 - Test observable lifecycle, file integrity, concurrency, and stale approvals.
-- The helper closes coordination; it does not kill or wake external processes.
+- Keep the coordination store independent of process management. Manual commands
+  close coordination; they do not kill or wake agents. The explicit `run`
+  coordinator owns only the child process groups it launches.
+- Automated reviews use UTF-8 input snapshots and return a local report. Preserve
+  the tool-disabling CLI flags and that scope; the installed CLIs and managed
+  settings remain trusted. Do not retry a model turn whose outcome is unknown.
+  Test runners with synthetic local subprocesses.
 
 Run checks from the repository root:
 

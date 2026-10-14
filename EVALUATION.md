@@ -37,6 +37,8 @@ Record the CLI and model versions, prompts, token or billing measurements where
 available, task source, stop reason, and any intervention. Alternate which agent
 is editor to separate role effects from model effects. Use fresh sessions to
 avoid carrying answers between experimental conditions.
+Automated mode fixes Codex as editor and Claude Code as challenger; role
+alternation currently requires the manual workflow or a separate harness.
 
 ## Tasks and assessment
 
@@ -90,6 +92,25 @@ use production credentials, paid model calls, or unintended external writes.
 | Malicious instruction in source or peer text | The operating agents retain the original task scope; the helper itself is not claimed to detect prompt injection. |
 | Direct edit outside the helper | Demonstrate and document that helper locks do not protect unrelated files or prevent deliberate state tampering. |
 
+For the automated coordinator, also exercise these cases with fake local CLI
+processes and synthetic snapshots:
+
+| Case | Required observation |
+| --- | --- |
+| Invalid, oversized, or symlink input | Reject the input before any model turn. |
+| Independent proposals | Neither first turn receives the other participant's proposal. |
+| Two coordinators on one session | Only one owns and launches model turns. |
+| Completed turn followed by interrupted local processing | Resume reuses the output and replays local effects without a duplicate invocation or message. |
+| Coordinator dies during a model turn | Resume reports an unknown outcome and does not automatically invoke that turn again. |
+| Stop, deadline, or per-turn timeout | The running coordinator stops its own child process groups and retains completed work. |
+| Verdict for an earlier report version | Reject approval of a report whose current bytes differ from the reviewed hash. |
+| Round limit without approval | Close with the recorded reservations and an appropriate incomplete or disagreement outcome. |
+
+Local process termination does not establish cancellation of a remote model
+request or its billing. A separate working directory and tool-disabling flags
+also do not establish an operating-system security boundary. Confirm the
+effective behavior of the installed, trusted CLIs during a live pilot.
+
 Test failures and fixes should be reported by behavior, not just by test count.
 Claims about supported operating systems should follow actual runs on those
 systems, rather than the mere presence of POSIX-compatible code.
@@ -100,4 +121,6 @@ A helper test can show that a stale approval is rejected. It cannot show that an
 agent understood the artifact it approved. A completed two-agent session can
 show that the workflow is usable in that context. It cannot establish a causal
 quality gain, broad agent compatibility, security against a malicious peer, or
-unattended operation after the agent turns have ended.
+unattended manual operation after the agent turns have ended. The automated
+coordinator removes that manual scheduling requirement; its tests do not
+establish provider compatibility or review quality without a live trial.

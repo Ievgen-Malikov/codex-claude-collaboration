@@ -5,21 +5,57 @@ One agent writes the result; the other challenges it. Each approves the final
 file by SHA-256, within a shared time budget.
 
 This repository provides a Python CLI, a review protocol, and two agent prompts.
-You open both agent sessions yourself. The helper does not launch or wake agents.
-Use it for design decisions, research, document review, or scoped code review.
-Other agents can participate if they can run local commands and read files.
+The optional `run` command launches Codex and Claude Code turns automatically
+to review supplied text and produce a local report. The manual workflow lets
+you coordinate two active sessions yourself, including scoped code reviews.
+Other agents can participate manually if they can run local commands and read
+files.
 
 ## Requirements
 
 - Python 3.11 or newer on macOS, Linux, or WSL.
-- Two active agent sessions with access to the same local directory.
-- Permission for both agents to run the helper and read the task inputs.
+- For automated review: recent Codex and Claude Code CLIs, installed and signed
+  in, and permission to submit the supplied task and inputs to both providers.
+- For manual review: two active agent sessions with access to the same local
+  directory, and permission to run the helper and read the task inputs.
 
-No package installation, model API calls, or API keys are needed by the helper.
-The agents still need their usual authentication. Native Windows is unsupported;
-the helper uses POSIX file locking.
+The Python helper has no third-party runtime dependencies. Manual commands do
+not call models. `run` uses the CLIs' usual authentication and consumes model
+quota. Native Windows is unsupported; the helper uses POSIX file locking and
+the coordinator uses POSIX process groups.
 
-## Quickstart
+## Automated local review
+
+Run from this repository's root with a fresh session path:
+
+```sh
+python3 -m review_session run ./sessions/automated-001 \
+  --goal "Review the supplied synthetic design brief and write a recommendation with remaining objections." \
+  --input examples/automated-task.synthetic.md \
+  --minutes 30 --max-rounds 3 --turn-timeout 180
+```
+
+The coordinator collects two independent assessments, exchanges their findings,
+and writes the editor's proposed report to `artifacts/result.md`. Each agent
+reviews and approves the report's exact SHA-256. It closes at agreement, the
+round limit, or the deadline, preserving the available report and objections.
+No active chat windows are needed; the coordinator and computer must keep
+running. Progress is written to stderr; the final response is JSON.
+
+Inputs are UTF-8 text snapshots, limited to 128 KiB combined. The coordinator
+supplies them as prompt data and starts the CLIs in a private working directory
+with flags disabling tools and customizations. The installed CLIs and managed
+settings remain trusted; this is not a new operating-system sandbox. This mode
+produces a review report. The coordinator makes no model calls to poll for messages.
+
+Inspect or stop the session with the existing commands below. After an
+interruption, `run PATH --resume` reuses the recorded configuration and finished
+outputs. An interrupted model turn with an unknown outcome is never retried
+automatically. See [automated review](docs/AUTOMATED_REVIEW.md) for options,
+recovery, cancellation, and limits. The supplied example is synthetic; no live
+model trial or quality gain has been established.
+
+## Manual quickstart
 
 ### 1. Create a review
 
@@ -122,10 +158,13 @@ messages. Commands return JSON; errors have `ok: false` and exit with status 2.
 
 At the deadline, `send` and `approve` are rejected. The designated coordinator
 can still call `stop` to record the outcome. Repeated `stop` calls are safe.
-The helper cannot cancel agent tool calls or prevent direct file edits.
+The manual helper cannot cancel agent tool calls or prevent direct file edits.
+For an automated session, a running coordinator observes the stop and terminates
+its own local child process groups. It cannot retract a remote model request.
 
-`status` reports `agreement_current` to detect changes since approval. The helper
-does not retain artifact versions; preserve a closed result before editing it.
+`status` reports `agreement_current` to detect changes since approval. The
+coordination store does not retain artifact versions; preserve a closed result
+before editing it.
 
 ## Trust and limits
 
@@ -142,6 +181,8 @@ been measured.
 ## Examples and details
 
 - [Current status and first live trial](NEXT_STEPS.md)
+- [Automated coordinator and recovery](docs/AUTOMATED_REVIEW.md)
+- [Synthetic automated task](examples/automated-task.synthetic.md)
 - [Mechanical walkthrough without models](examples/mechanical-walkthrough.md)
 - [Coordinator prompt](prompts/agent-a.md) and [challenger prompt](prompts/agent-b.md)
 - [Related work](RELATED_WORK.md) and [evaluation plan](EVALUATION.md)
