@@ -149,11 +149,17 @@ path for a new review. A nonzero CLI exit is likewise not permission to repeat
 the request indefinitely.
 
 Ctrl-C, the session deadline, or an operator `stop` causes a running coordinator
-to terminate the local child process groups it owns. The store's `stop` command
-does not itself kill processes, and after a coordinator crash the operator must
+to attempt to terminate the local child process groups it owns. The store's
+`stop` command does not itself kill processes, and after a crash the operator must
 inspect and stop any surviving children. No local cancellation can retract a
 remote request, undo its effects, or guarantee that provider billing stopped.
 The coordinator never terminates unrelated agent sessions.
+
+If any owned group cannot be confirmed stopped, `run` reports `runner_cleanup`
+with the affected PIDs and original failure, when present. Treat those groups as
+potentially still running and inspect the private logs and current processes.
+Recorded PIDs remain evidence; they are not safe targets for later automatic
+signalling.
 
 ## Boundaries and verification
 

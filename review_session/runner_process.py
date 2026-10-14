@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import threading
 import time
 from typing import Callable, Iterator
@@ -108,6 +109,9 @@ def execute(invocations: list[Invocation], timeout: float, check_open: Callable[
                         raise SessionError('runner_provider', f'Agent CLI exited with status {code}; inspect private stderr.log.')
                     check_open()
                     terminate_group(process)
+                    # Ownership ends after cleanup, before decoding or saving can fail.
+                    # A later error must not signal this completed group a second time.
+                    del processes[identifier]
                     os.fsync(output.fileno())
                     os.fsync(errors.fileno())
                     if invocation.stderr.stat().st_size > MAX_OUTPUT_BYTES:
@@ -121,9 +125,21 @@ def execute(invocations: list[Invocation], timeout: float, check_open: Callable[
                     except UnicodeError:
                         raise SessionError('runner_response', 'Agent returned non-UTF-8 output.') from None
                     completed(identifier, text)
-                    del processes[identifier]
                 if processes:
                     time.sleep(POLL_SECONDS)
         finally:
+            primary = sys.exception()
+            cleanup_failures = []
             for process, _, _, _, _ in processes.values():
-                terminate_group(process)
+                try:
+                    terminate_group(process)
+                except (OSError, subprocess.TimeoutExpired) as error:
+                    detail = f'Owned process group {process.pid} could not be confirmed stopped: {error}'
+                    cleanup_failures.append(detail)
+                    print('[runner] cleanup warning: ' + detail, file=sys.stderr, flush=True)
+            if cleanup_failures:
+                message = 'Process cleanup was incomplete. ' + '; '.join(cleanup_failures)
+                if primary is not None:
+                    original = primary.code if isinstance(primary, SessionError) else type(primary).__name__
+                    message += f'. Original failure: {original}: {primary}'
+                raise SessionError('runner_cleanup', message) from primary

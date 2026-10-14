@@ -92,7 +92,7 @@ class Coordinator:
 
     def check_open(self):
         if self.cancellation.requested:
-            raise SessionError('runner_cancelled', 'Coordinator interrupted; owned processes stopped and partial work was preserved.')
+            raise SessionError('runner_cancelled', 'Coordinator interrupted; partial work was preserved.')
         with self.session.locked() as state:
             if state['phase'] == 'STOPPED':
                 raise OperatorStopped
@@ -295,7 +295,7 @@ def run(path: str, *, resume: bool = False, goal: str | None = None, inputs: lis
                 return output
             except (KeyboardInterrupt, SessionError, OSError) as error:
                 if isinstance(error, KeyboardInterrupt):
-                    error = SessionError('runner_cancelled', 'Coordinator interrupted; owned agent processes stopped and partial work was preserved.')
+                    error = SessionError('runner_cancelled', 'Coordinator interrupted; partial work was preserved.')
                 data.update(status='failed', error=str(error))
                 for job in data['jobs'].values():
                     if job['status'] == 'running':

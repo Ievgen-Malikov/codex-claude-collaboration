@@ -132,8 +132,25 @@ class RunnerTests(unittest.TestCase):
         patched_main.assert_called_once()
         self.assertEqual(result['error']['code'], 'runner_response')
 
-    def calls(self):
-        return [json.loads(line) for line in (self.root / 'calls.jsonl').read_text().splitlines()]
+    def calls(self, *, complete_only=False):
+        lines = (self.root / 'calls.jsonl').read_text().split('\n')
+        if complete_only:
+            # The live writer may have appended only part of its final record.
+            lines = lines[:-1]
+        return [json.loads(line) for line in lines if line]
+
+    def test_live_call_observation_waits_for_a_complete_final_record(self):
+        log = self.root / 'calls.jsonl'
+        log.write_text('{"stage":"proposal"}\n{"stage":')
+        self.assertEqual(self.calls(complete_only=True), [{'stage': 'proposal'}])
+        with self.assertRaises(json.JSONDecodeError):
+            self.calls()
+        with log.open('a') as handle:
+            handle.write('"proposal"}\n')
+        self.assertEqual(len(self.calls(complete_only=True)), 2)
+        log.write_text('invalid complete record\n')
+        with self.assertRaises(json.JSONDecodeError):
+            self.calls(complete_only=True)
 
     def test_full_review_is_independent_and_approves_exact_report(self):
         result = self.command(self.arguments())
@@ -257,7 +274,7 @@ class RunnerTests(unittest.TestCase):
         process = subprocess.Popen([sys.executable, '-m', 'review_session', *self.arguments()],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.addCleanup(lambda: process.kill() if process.poll() is None else None)
-        self.wait_for(lambda: (self.root / 'calls.jsonl').exists() and len(self.calls()) == 2)
+        self.wait_for(lambda: (self.root / 'calls.jsonl').exists() and len(self.calls(complete_only=True)) == 2)
         self.wait_for(lambda: all(job['pid'] is not None for job in self.journal()['jobs'].values()))
         original_pids = {identifier: job['pid'] for identifier, job in self.journal()['jobs'].items()}
         Session(str(self.session_path)).stop('Operator stopped')
