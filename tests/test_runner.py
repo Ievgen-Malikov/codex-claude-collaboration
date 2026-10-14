@@ -115,7 +115,7 @@ class RunnerTests(unittest.TestCase):
                     records.append(candidate)
             self.assertEqual(len(records), 1, stderr.getvalue())
             value = records[0]
-            self.assertEqual(value['error']['code'], error)
+            self.assertEqual(value['error']['code'], error, stderr.getvalue())
             return value
         self.assertEqual(code, 0, stderr.getvalue())
         return json.loads(stdout.getvalue())
