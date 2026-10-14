@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager, ExitStack
 from dataclasses import dataclass
+import errno
 import os
 from pathlib import Path
 import signal
@@ -59,18 +60,30 @@ class Invocation:
 def terminate_group(process: subprocess.Popen) -> None:
     # Only processes launched in this invocation are eligible. Persisted PIDs
     # from an interrupted coordinator are evidence, never targets for signals.
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
+    def signal_group(signum):
+        # Darwin returns EPERM for a group containing only an unreaped zombie.
+        # Reap an exited leader, while still signalling any surviving descendants.
+        process.poll()
+        try:
+            os.killpg(process.pid, signum)
+        except PermissionError as error:
+            # The leader can exit between poll and killpg. Reap and retry once;
+            # a real permission failure for a live group must still propagate.
+            if error.errno != errno.EPERM or process.poll() is None:
+                raise
+            try:
+                os.killpg(process.pid, signum)
+            except ProcessLookupError:
+                pass
+        except ProcessLookupError:
+            pass
+
+    signal_group(signal.SIGTERM)
     try:
         process.wait(timeout=0.3)
     except subprocess.TimeoutExpired:
         pass
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+    signal_group(signal.SIGKILL)
     process.wait(timeout=2)
 
 

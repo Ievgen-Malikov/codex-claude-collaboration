@@ -5,11 +5,12 @@ import errno
 import io
 import json
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 from review_session.cli import main
 from review_session.core import Session, SessionError
@@ -42,6 +43,58 @@ class RunnerProcessTests(unittest.TestCase):
         prompt.write_text('{}')
         return Invocation(identifier, [sys.executable, '-c', code], directory,
                           prompt, directory / 'stdout.jsonl', directory / 'stderr.log')
+
+    def test_termination_reaps_an_exited_leader_before_signalling(self):
+        process = Mock(pid=12345)
+        process.wait.return_value = 0
+        reaped = False
+
+        def poll():
+            nonlocal reaped
+            reaped = True
+            return 0
+
+        def signal_group(pid, signum):
+            if not reaped:
+                raise PermissionError(errno.EPERM, 'Synthetic zombie-only group')
+            raise ProcessLookupError(errno.ESRCH, 'Synthetic reaped group')
+
+        process.poll.side_effect = poll
+        with patch('review_session.runner_process.os.killpg', side_effect=signal_group):
+            terminate_group(process)
+        self.assertTrue(reaped)
+
+    def test_exit_between_poll_and_signal_is_reaped_then_retried_once(self):
+        process = Mock(pid=12345)
+        process.poll.side_effect = [None, 0, 0]
+        process.wait.return_value = 0
+        denied = PermissionError(errno.EPERM, 'Synthetic zombie-only group')
+        absent = ProcessLookupError(errno.ESRCH, 'Synthetic reaped group')
+        with patch('review_session.runner_process.os.killpg', side_effect=[denied, absent, absent]) as killpg:
+            terminate_group(process)
+        self.assertEqual(killpg.call_args_list, [call(12345, signal.SIGTERM),
+                                               call(12345, signal.SIGTERM),
+                                               call(12345, signal.SIGKILL)])
+
+    def test_running_leader_permission_error_is_not_retried_or_suppressed(self):
+        process = Mock(pid=12345)
+        process.poll.return_value = None
+        denied = PermissionError(errno.EPERM, 'Synthetic real permission failure')
+        with patch('review_session.runner_process.os.killpg', side_effect=denied) as killpg, \
+                self.assertRaises(PermissionError) as caught:
+            terminate_group(process)
+        self.assertIs(caught.exception, denied)
+        killpg.assert_called_once_with(12345, signal.SIGTERM)
+
+    def test_exited_leader_does_not_hide_descendant_permission_error(self):
+        process = Mock(pid=12345)
+        process.poll.return_value = 0
+        denied = PermissionError(errno.EPERM, 'Synthetic descendant permission failure')
+        with patch('review_session.runner_process.os.killpg', side_effect=denied) as killpg, \
+                self.assertRaises(PermissionError) as caught:
+            terminate_group(process)
+        self.assertIs(caught.exception, denied)
+        self.assertEqual(killpg.call_count, 2)
 
     def test_failed_decode_does_not_terminate_completed_group_twice(self):
         invocations = [self.invocation('completed', "print('invalid response')"),
