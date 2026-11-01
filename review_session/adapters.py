@@ -99,10 +99,10 @@ class Adapter:
             command = [self.executable, "--no-daemon", "--sandbox", "read-only",
                        "--ask-for-approval", "never", "--cd", str(workdir)]
             for feature in ("shell_tool", "hooks", "plugins", "apps", "multi_agent",
-                            "browser_use", "computer_use", "image_generation", "goals"):
+                            "browser_use", "computer_use", "image_generation", "view_image", "goals"):
                 command += ["--disable", feature]
             for setting in ('web_search="disabled"', "mcp_servers={}",
-                            "tools.view_image=false", "project_doc_max_bytes=0"):
+                            "tools.experimental_request_user_input.enabled=false", "project_doc_max_bytes=0"):
                 command += ["--config", setting]
             command += ["--config", "developer_instructions=" + json.dumps(AUTOMATED_POLICY)]
             command += ["exec"]

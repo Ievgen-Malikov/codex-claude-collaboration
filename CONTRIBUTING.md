@@ -25,6 +25,29 @@ outcomes, input snapshots, and approvals for the reviewed hash. Preserve manual
 command compatibility. Document runner options and recovery in
 [the automated guide](docs/AUTOMATED_REVIEW.md).
 
+## Skill changes
+
+Edit the canonical `skills/collaborative-review/` folder. Keep it usable after
+copying it outside the checkout: bundle required references, synthetic assets,
+and the license notice. The skill invokes the installed CLI; automated child
+policy remains in `review_session/prompt_policy.py`.
+
+Validate the skill format in a separate development environment:
+
+```sh
+python3 -m venv .local/skill-check-venv
+.local/skill-check-venv/bin/python -m pip install skills-ref==0.1.0
+.local/skill-check-venv/bin/agentskills validate skills/collaborative-review
+```
+
+This release of the official
+[Agent Skills reference validator](https://github.com/agentskills/agentskills/tree/main/skills-ref)
+exposes the command as `agentskills`. It is a development check, not a runtime
+dependency. The validator checks the format; also exercise realistic requests,
+copied resources, and the documented commands. Use synthetic local provider
+subprocesses for routine workflow checks. Do not make paid calls or claim live
+host discovery from a format check alone. See [the skill guide](docs/SKILLS.md).
+
 ## Examples and evaluation
 
 Label simulated conversations as synthetic. Do not publish private logs or

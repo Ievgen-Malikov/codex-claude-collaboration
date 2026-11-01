@@ -27,6 +27,30 @@ not call models. `run` uses the CLIs' usual authentication and consumes model
 quota. Native Windows is unsupported; the helper uses POSIX file locking and
 the coordinator uses POSIX process groups.
 
+## Install and check
+
+From a checkout of this repository:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install .
+.venv/bin/agent-review-session doctor
+```
+
+`doctor` checks the local Python/platform requirements and the installed CLIs'
+version/help interfaces without a model call or a review session. It prints
+actionable JSON diagnostics; exit 0 means the required local checks passed,
+and exit 2 means a check failed. Authentication remains unverified. This does
+not establish provider access or live runtime compatibility.
+
+The repository also includes a
+[collaborative-review skill](skills/collaborative-review/SKILL.md) for invoking
+this workflow from a local coding agent. Follow the
+[skill installation and quickstart](docs/SKILLS.md) for Codex/Claude Code setup,
+synthetic architecture/specification/diff recipes, and report interpretation.
+The skill calls the existing CLI; the coordinator retains its separate policy
+and lifecycle controls.
+
 ## Automated local review
 
 Run from this repository's root with a fresh session path:
@@ -55,8 +79,8 @@ Inspect or stop the session with the existing commands below. After an
 interruption, `run PATH --resume` reuses the recorded configuration and finished
 outputs. An interrupted model turn with an unknown outcome is never retried
 automatically. See [automated review](docs/AUTOMATED_REVIEW.md) for options,
-recovery, cancellation, and limits. The supplied example is synthetic; no live
-model trial or quality gain has been established.
+recovery, cancellation, and limits. The supplied example is synthetic; no
+completed live two-provider review or measured quality gain has been established.
 
 ## Manual quickstart
 
@@ -201,8 +225,10 @@ been measured.
 
 ## Examples and details
 
-- [Current status and first live trial](NEXT_STEPS.md)
+- [Current status and remaining validation](NEXT_STEPS.md)
+- [Versioned validation snapshot](docs/VALIDATION.md)
 - [Automated coordinator and recovery](docs/AUTOMATED_REVIEW.md)
+- [Skill installation, environment check, and recipes](docs/SKILLS.md)
 - [Synthetic automated task](examples/automated-task.synthetic.md)
 - [Mechanical walkthrough without models](examples/mechanical-walkthrough.md)
 - [Coordinator prompt](prompts/agent-a.md) and [challenger prompt](prompts/agent-b.md)

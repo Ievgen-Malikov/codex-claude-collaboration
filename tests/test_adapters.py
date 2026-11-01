@@ -56,9 +56,11 @@ class AdapterTests(unittest.TestCase):
                     self.assertIn(flag, command)
                 disabled = {command[index + 1] for index, flag in enumerate(command) if flag == "--disable"}
                 self.assertTrue({"shell_tool", "hooks", "plugins", "apps", "multi_agent", "browser_use",
-                                 "computer_use", "image_generation", "goals"} <= disabled)
+                                 "computer_use", "image_generation", "view_image", "goals"} <= disabled)
                 self.assertIn('web_search="disabled"', command)
                 self.assertIn("mcp_servers={}", command)
+                self.assertIn("tools.experimental_request_user_input.enabled=false", command)
+                self.assertNotIn("tools.view_image=false", command)
                 self.assertIn("project_doc_max_bytes=0", command)
                 self.assertEqual(command[command.index("--output-schema") + 1], "/schema.json")
                 self.assertEqual(command[command.index("--model") + 1], "synthetic-model")
@@ -129,6 +131,14 @@ class AdapterTests(unittest.TestCase):
             for event_type in ("item.started", "item.completed"):
                 with self.subTest(item_type=item_type, event_type=event_type):
                     self.assert_error(adapter, codex_output(extra_events=[{"type": event_type, "item": {"type": item_type}}]), "runner_provider")
+
+    def test_codex_rejects_ignored_restriction_errors_even_with_a_completed_response(self):
+        warning = {"type": "item.completed", "item": {
+            "type": "error",
+            "message": "Ignoring unrecognized configuration setting: tools.view_image is ignored.",
+        }}
+        output = codex_output(extra_events=[warning])
+        self.assert_error(Adapter("codex", "codex"), output, "runner_provider")
 
     def test_codex_requires_unambiguous_completed_turn(self):
         adapter = Adapter("codex", "codex")

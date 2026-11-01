@@ -1,4 +1,4 @@
-# Current status and first live trial
+# Current status and remaining validation
 
 This workflow grew out of a practical question during a personal project: how
 can Codex and Claude Code review the same task, challenge each other's reasoning,
@@ -7,19 +7,23 @@ helper, a protocol, and prompts for two active agent sessions. An opt-in local
 coordinator now launches bounded Codex and Claude Code turns to review supplied
 text without keeping chat windows active.
 
-The manual CLI, packaging, and synthetic walkthrough were checked before the
-coordinator was added. Automated tests use synthetic local subprocesses to
-exercise coordination and recovery without paid model calls. These checks
-establish the behavior tested, not the quality of a two-agent answer. A live
-Codex + Claude Code trial of the automated mode has not been run.
+A repository-distributed `collaborative-review` skill now provides a thin entry
+point to that coordinator. The `doctor` command checks local requirements and
+provider version/help interfaces without a model request. The
+[skill guide](docs/SKILLS.md) covers package installation, project-local skill
+discovery, and three fictional review recipes. These additions do not change
+the automated child policy or establish live provider compatibility.
 
-Recorded checks for the initial coordinator implementation include the local
-suite and package installation on macOS with Python 3.12.7, a synthetic automatic
-review through the installed entry point from outside the repository, and CLI
-parser acceptance of initial and resume adapter commands. Codex feature
-introspection confirmed the requested features disabled. These records do not
-establish that later revisions passed; rerun the repository checks after changes.
-Actual provider responses and review quality remain untested.
+The checkout exposes the skill to Codex through a relative symlink to its
+canonical source. Native Codex discovery recognizes the skill and its interface
+metadata without loader errors. The [validation snapshot](docs/VALIDATION.md)
+records the checked versions and distinguishes discovery from model activation.
+
+Automated tests use synthetic local subprocesses to exercise coordination and
+recovery without paid model calls. These checks establish the behavior tested,
+not the quality of a two-agent answer. No completed live Codex + Claude Code
+review or measured quality gain has been established. Rerun the repository
+checks after later changes.
 
 ## Next step
 

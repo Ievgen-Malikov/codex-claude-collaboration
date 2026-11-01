@@ -119,7 +119,7 @@ def execute(invocations: list[Invocation], timeout: float, check_open: Callable[
                     if code is None:
                         continue
                     if code != 0:
-                        raise SessionError('runner_provider', f'Agent CLI exited with status {code}; inspect private stderr.log.')
+                        raise SessionError('runner_provider', f'Agent CLI exited with status {code}; inspect private stdout.jsonl and stderr.log.')
                     check_open()
                     terminate_group(process)
                     # Ownership ends after cleanup, before decoding or saving can fail.

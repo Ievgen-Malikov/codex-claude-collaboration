@@ -5,6 +5,15 @@ the supplied UTF-8 text and produces `artifacts/result.md`. It requires Python
 3.11 or later, a local POSIX filesystem, and recent CLIs already signed in.
 The Python implementation uses only the standard library.
 
+For isolated package installation and a skill entry point, see the
+[installation and skill guide](SKILLS.md). Before the first review, run
+`agent-review-session doctor` (or `python3 -m review_session doctor` from this
+checkout). It uses bounded local version/help probes without making a model
+request or creating a session. A passing local check does not verify sign-in,
+provider availability, or runtime flag behavior; authentication is explicitly
+not checked. Use the same custom provider executable options for `doctor` and
+the actual `run`.
+
 Automated turns use the static policy in `review_session/prompt_policy.py`
 through Codex's developer instructions and Claude Code's appended system
 prompt. The goal, source snapshots, peer messages, and report remain separate
@@ -179,8 +188,8 @@ guarantee against simultaneous external edits.
 
 Runner tests use fake local CLI processes and synthetic input. They verify
 observable coordination, bounded execution, report hashes, and recovery without
-paid model calls. A live trial with both providers has not yet been run. CLI
-compatibility and review quality should be measured in that trial before
+paid model calls. No completed live review with both providers has been
+established. CLI compatibility and review quality should be measured in that trial before
 claiming an improvement; see [the evaluation plan](../EVALUATION.md).
 No reduction in tokens, cost, or latency has been measured. The coordinator
 resumes provider conversations and supplies complete turn context; measure this

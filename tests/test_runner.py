@@ -1,6 +1,7 @@
 """Synthetic end-to-end runner tests: real subprocesses, no model providers."""
 
 from contextlib import redirect_stderr, redirect_stdout
+import errno
 import hashlib
 import io
 import json
@@ -95,10 +96,12 @@ class RunnerTests(unittest.TestCase):
                 '--input', str(self.input), '--codex-command', str(self.root / 'fake_codex'),
                 '--claude-command', str(self.root / 'fake_claude'), '--turn-timeout', '3', *extra]
 
-    def command(self, args, error=None):
+    def command(self, args, error=None, *, allow_cleanup_uncertainty=False):
         stdout, stderr = io.StringIO(), io.StringIO()
         with redirect_stdout(stdout), redirect_stderr(stderr):
             code = main(args)
+        if allow_cleanup_uncertainty and code == 2:
+            error = 'runner_cleanup'
         if error:
             self.assertEqual(code, 2, (stdout.getvalue(), stderr.getvalue()))
             self.assertEqual(stdout.getvalue(), '')
@@ -115,7 +118,8 @@ class RunnerTests(unittest.TestCase):
                     records.append(candidate)
             self.assertEqual(len(records), 1, stderr.getvalue())
             value = records[0]
-            self.assertEqual(value['error']['code'], error, stderr.getvalue())
+            expected_codes = error if isinstance(error, tuple) else (error,)
+            self.assertIn(value['error']['code'], expected_codes, stderr.getvalue())
             return value
         self.assertEqual(code, 0, stderr.getvalue())
         return json.loads(stdout.getvalue())
@@ -224,20 +228,67 @@ class RunnerTests(unittest.TestCase):
         self.input.write_text('{"hang":true}')
         args = self.arguments()
         args[args.index('--turn-timeout') + 1] = '1'
-        self.command(args, error='runner_timeout')
+        result = self.command(args, error=('runner_timeout', 'runner_cleanup'))
+        if result['error']['code'] == 'runner_cleanup':
+            # The OS may refuse cleanup confirmation after stopping the child.
+            # The original timeout must remain visible rather than be lost.
+            self.assertIn('runner_timeout', result['error']['message'])
+        status = Session(str(self.session_path)).status()
+        self.assertEqual(status['phase'], 'STOPPED')
+        self.assertEqual(status['outcome'], 'PARTIAL')
+        self.assertFalse(status['agreement_current'])
         self.assertTrue((self.session_path / 'artifacts/result.md').exists())
         time.sleep(2.1)
         self.assertFalse((self.root / 'child-survived').exists())
 
-    def test_successful_turn_does_not_leave_background_descendants_running(self):
+    def background_review(self):
         self.input.write_text('{"background_child":true}')
-        result = self.command(self.arguments())
-        self.assertEqual(result['outcome'], 'AGREED')
-        self.assertTrue((self.root / 'background.pid').exists())
-        draft_pid = self.journal()['jobs']['draft-1']['pid']
-        self.addCleanup(self.terminate_synthetic_group, draft_pid)
-        time.sleep(1.1)
-        self.assertFalse((self.root / 'background-survived').exists())
+        try:
+            result = self.command(self.arguments(), allow_cleanup_uncertainty=True)
+            status = Session(str(self.session_path)).status()
+            if result['ok']:
+                self.assertEqual(status['outcome'], 'AGREED')
+                self.assertTrue(status['agreement_current'])
+            else:
+                # An orphan zombie-only group can return EPERM on Darwin after
+                # its live child stopped. Keep that uncertainty as a failure;
+                # the command helper accepts only the runner_cleanup error.
+                self.assertEqual(status['phase'], 'STOPPED')
+                self.assertEqual(status['outcome'], 'PARTIAL')
+                self.assertFalse(status['agreement_current'])
+                self.assertFalse(status['approvals'])
+            return result
+        finally:
+            self.assertTrue((self.root / 'background.pid').exists())
+            draft_pid = self.journal()['jobs']['draft-1']['pid']
+            self.addCleanup(self.terminate_synthetic_group, draft_pid)
+            time.sleep(1.1)
+            self.assertFalse((self.root / 'background-survived').exists())
+
+    def test_background_turn_stops_descendants_or_reports_cleanup_uncertainty(self):
+        self.background_review()
+
+    def test_background_cleanup_uncertainty_never_records_false_agreement(self):
+        from review_session.runner_process import terminate_group
+
+        uncertain_groups = set()
+
+        def cleanup_with_uncertain_confirmation(process):
+            background_started = (self.root / 'background.pid').exists()
+            if background_started:
+                uncertain_groups.add(process.pid)
+            # Attempt real cleanup of the synthetic group before simulating an
+            # OS refusal to confirm it, including the coordinator's final retry.
+            terminate_group(process)
+            if background_started:
+                raise PermissionError(errno.EPERM, 'Synthetic cleanup verification uncertainty')
+
+        with patch('review_session.runner_process.terminate_group',
+                   side_effect=cleanup_with_uncertain_confirmation):
+            result = self.background_review()
+        self.assertTrue(uncertain_groups)
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['error']['code'], 'runner_cleanup')
 
     def test_deadline_includes_initial_turns_and_rejects_late_results(self):
         self.input.write_text('{"slow":.3}'.replace(':.', ':0.'))

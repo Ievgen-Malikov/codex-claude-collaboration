@@ -52,14 +52,25 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--claude-command", help="Claude Code executable name or path (default: claude)")
     run.add_argument("--codex-model", help="Optional Codex model selection")
     run.add_argument("--claude-model", help="Optional Claude model selection")
+    doctor = commands.add_parser("doctor", help="Check local prerequisites without model calls or session changes")
+    doctor.add_argument("--codex-command", default="codex", help="Codex executable name or path (default: codex)")
+    doctor.add_argument("--claude-command", default="claude", help="Claude Code executable name or path (default: claude)")
+    doctor.add_argument("--probe-timeout", type=float, default=5,
+                        help="Seconds per local help/version probe, at most 10 (default: 5)")
     return result
 
 
 def main(argv: list[str] | None = None) -> int:
     try:
         args = parser().parse_args(argv)
+        exit_code = 0
         if args.command == "init":
             output = initialize(args.path, args.goal, args.minutes)
+        elif args.command == "doctor":
+            from .doctor import doctor
+            output = doctor(codex_command=args.codex_command, claude_command=args.claude_command,
+                            probe_timeout=args.probe_timeout)
+            exit_code = 0 if output["local_checks_passed"] else 2
         elif args.command == "run":
             from .runner import run
             output = run(args.path, resume=args.resume, goal=args.goal, inputs=args.inputs,
@@ -86,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 output = session.stop(args.reason, args.outcome)
         print(json.dumps(output, ensure_ascii=False, allow_nan=False))
-        return 0
+        return exit_code
     except (SessionError, OSError) as error:
         code = error.code if isinstance(error, SessionError) else "io_error"
         print(json.dumps({"ok": False, "error": {"code": code, "message": str(error)}},
