@@ -27,10 +27,10 @@ command compatibility. Document runner options and recovery in
 
 ## Skill changes
 
-Edit the canonical `skills/collaborative-review/` folder. Keep it usable after
-copying it outside the checkout: bundle required references, synthetic assets,
-and the license notice. The skill invokes the installed CLI; automated child
-policy remains in `review_session/prompt_policy.py`.
+Edit the source in `skills/collaborative-review/`. Include the references,
+synthetic examples, and license notice so the folder works when copied outside
+the checkout. The skill calls the installed CLI. Automated reviewers follow
+the separate policy in `review_session/prompt_policy.py`.
 
 Validate the skill format in a separate development environment:
 

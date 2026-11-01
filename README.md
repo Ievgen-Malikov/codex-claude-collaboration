@@ -1,18 +1,25 @@
 # Codex–Claude Collaboration
 
-Let Codex and Claude Code review the same task through a local file-based inbox.
-One agent writes the result; the other challenges it. Each approves the final
-file by SHA-256, within a shared time budget.
+Give Codex and Claude Code the same task. They review it independently, compare
+findings, and leave a report with any unresolved objections. One agent writes
+the report; the other checks it. If both approve, their approvals identify the
+same final file by its SHA-256 hash.
 
-This repository provides a Python CLI, a review protocol, and two agent prompts.
-The Markdown role prompts guide manual sessions. Automated `run` turns use the
-static policy in `review_session/prompt_policy.py` through each CLI's native
-instruction channel, with task and peer material supplied separately as data.
-The optional `run` command launches Codex and Claude Code turns automatically
-to review supplied text and produce a local report. The manual workflow lets
-you coordinate two active sessions yourself, including scoped code reviews.
-Other agents can participate manually if they can run local commands and read
-files.
+This grew out of a personal project where I wanted the two agents to question
+each other's conclusions and keep a clear record of the result. The repository
+contains a small Python CLI, a review protocol, and prompts for manual sessions.
+The inbox and session records are ordinary local files.
+
+Use it to review an architecture decision, a specification, a plan, or a code
+diff you can share with both models. There are two ways to run a review:
+
+| Workflow | How it works |
+| --- | --- |
+| [Automated review](#automated-local-review) | The CLI starts both agents, gives them text snapshots, and saves a report. No open chat windows are needed. |
+| [Manual review](#manual-quickstart) | You open two agent sessions and use the local inbox to exchange findings. You can include code reviews with clearly assigned permissions. |
+
+Other agents can join a manual review if they can run local commands and read
+the shared files.
 
 ## Requirements
 
@@ -37,23 +44,22 @@ python3 -m venv .venv
 .venv/bin/agent-review-session doctor
 ```
 
-`doctor` checks the local Python/platform requirements and the installed CLIs'
-version/help interfaces without a model call or a review session. It prints
-actionable JSON diagnostics; exit 0 means the required local checks passed,
-and exit 2 means a check failed. Authentication remains unverified. This does
-not establish provider access or live runtime compatibility.
+`doctor` checks Python, the operating system, and the installed CLIs using their
+`--version` and `--help` commands. It makes no model requests and creates no
+review session. The JSON output explains failed checks. Exit 0 means the local
+checks passed; exit 2 means a check failed. It does not check sign-in or whether
+a model request will succeed.
 
 The repository also includes a
-[collaborative-review skill](skills/collaborative-review/SKILL.md) for invoking
-this workflow from a local coding agent. Follow the
-[skill installation and quickstart](docs/SKILLS.md) for Codex/Claude Code setup,
-synthetic architecture/specification/diff recipes, and report interpretation.
-The skill calls the existing CLI; the coordinator retains its separate policy
-and lifecycle controls.
+[collaborative-review skill](skills/collaborative-review/SKILL.md), so you can ask
+a local coding agent to start a review for you. The
+[skill guide](docs/SKILLS.md) covers setup, fictional examples, and how to read
+the result. The skill uses the same CLI and review rules.
 
 ## Automated local review
 
-Run from this repository's root with a fresh session path:
+Try the included synthetic brief from the repository root, using a fresh
+session path:
 
 ```sh
 python3 -m review_session run ./sessions/automated-001 \
@@ -62,12 +68,14 @@ python3 -m review_session run ./sessions/automated-001 \
   --minutes 30 --max-rounds 3 --turn-timeout 180
 ```
 
-The coordinator collects two independent assessments, exchanges their findings,
-and writes the editor's proposed report to `artifacts/result.md`. Each agent
-reviews and approves the report's exact SHA-256. It closes at agreement, the
-round limit, or the deadline, preserving the available report and objections.
-No active chat windows are needed; the coordinator and computer must keep
-running. Progress is written to stderr; the final response is JSON.
+The coordinator collects two independent assessments and shares their findings.
+One agent drafts `artifacts/result.md`; the other reviews it. Each agent can
+approve the exact version it read, identified by its SHA-256 hash. The review
+ends when both approve, the round limit is reached, or time runs out. The
+available report and objections are kept in the session directory.
+
+Keep the coordinator running and the computer awake. Progress goes to stderr;
+the final response is JSON.
 
 Inputs are UTF-8 text snapshots, limited to 128 KiB combined. The coordinator
 supplies them as prompt data and starts the CLIs in a private working directory
@@ -79,8 +87,9 @@ Inspect or stop the session with the existing commands below. After an
 interruption, `run PATH --resume` reuses the recorded configuration and finished
 outputs. An interrupted model turn with an unknown outcome is never retried
 automatically. See [automated review](docs/AUTOMATED_REVIEW.md) for options,
-recovery, cancellation, and limits. The supplied example is synthetic; no
-completed live two-provider review or measured quality gain has been established.
+recovery, cancellation, and limits. This is still an experiment: a completed
+live review with both providers and any improvement in answer quality remain
+unverified. See [what has been checked](docs/VALIDATION.md).
 
 ## Manual quickstart
 
@@ -212,6 +221,11 @@ coordination store does not retain artifact versions; preserve a closed result
 before editing it.
 
 ## Trust and limits
+
+The role prompts in `prompts/` guide manual sessions. Automated turns follow
+the separate policy in `review_session/prompt_policy.py`, passed through each
+CLI's instruction channel. The task, source text, and peer messages remain data;
+they cannot change that policy or grant permissions.
 
 This is a cooperative local workflow. Agent labels are not authenticated, and
 helper locks do not protect application files from other editors. Approved files

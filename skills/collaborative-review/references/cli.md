@@ -4,8 +4,8 @@ Use the installed `agent-review-session` executable, or its user-supplied
 absolute path. An activated virtual environment makes the installed command
 available on PATH. The copied skill does not include the Python package.
 
-If the helper is missing, report the prerequisite. Installation from an
-existing checkout is `python3 -m venv .venv`, followed by
+If the helper is missing, explain that it must be installed. From an existing
+checkout, use `python3 -m venv .venv`, followed by
 `.venv/bin/python -m pip install .` from that checkout; use
 `.venv/bin/agent-review-session` as the helper. Do not guess a checkout path or
 silently install software into the user's agent configuration.
@@ -21,9 +21,10 @@ credential files, or creating a review session. It prints JSON to stdout:
 
 - Exit 0 and `local_checks_passed: true`: the required local checks passed.
 - Exit 2 and `local_checks_passed: false`: inspect the failed checks and their
-  actionable messages before starting a review.
-- `authentication: "not_checked"`: local checks do not establish sign-in,
-  provider access, correct flag behavior, or live review compatibility.
+  messages before starting a review.
+- `authentication: "not_checked"`: the command does not check sign-in or model
+  access. Help output alone cannot confirm how flags behave during a real run.
+  Passing these checks does not prove that a complete review will succeed.
 
 Invalid command arguments produce the CLI's usual JSON error on stderr.
 For custom installations, pass the same `--codex-command PROGRAM` and
@@ -77,15 +78,15 @@ and the original authorization remains applicable:
 agent-review-session run /absolute/private/review-001 --resume
 ```
 
-Resume reuses original options, snapshots, completed outputs, and deadline.
-It accepts no configuration overrides, extends no deadline, and reopens no
-closed review. A turn whose outcome is unknown must not be repeated
+Resume uses the original options, input snapshots, completed outputs, and
+deadline. You cannot override its configuration, extend its deadline, or reopen
+a closed review. A turn whose outcome is unknown must not be repeated
 automatically; report the blocker and preserve the session for inspection.
 
 | Recorded outcome | Report to the user |
 | --- | --- |
 | `AGREED` | Both providers approved the same current report bytes. |
-| `PARTIAL` | Available work remains without matching current approvals. |
+| `PARTIAL` | The review ended without matching current approvals. Any completed work is kept. |
 | `DISAGREED` | The review closed with recorded unresolved disagreement. |
 
 The report is `SESSION/artifacts/result.md`. `status` supplies the recorded

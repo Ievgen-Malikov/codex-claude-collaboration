@@ -1,4 +1,4 @@
 interface:
   display_name: "Codex–Claude Review"
-  short_description: "Independent Codex and Claude review of supplied text"
-  default_prompt: "Use $collaborative-review to get an independent Codex and Claude review of this decision."
+  short_description: "Have Codex and Claude review the same text"
+  default_prompt: "Use $collaborative-review to ask Codex and Claude to review this decision."

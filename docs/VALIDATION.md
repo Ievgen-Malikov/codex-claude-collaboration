@@ -1,68 +1,74 @@
 # Validation snapshot
 
-This snapshot records checks performed on November 1, 2026, on macOS with
-Python 3.12.7 and Codex CLI 0.166.0. It describes these versions and workflows;
-later changes require fresh checks.
+The checks below ran on November 1, 2026, on macOS with Python 3.12.7 and Codex
+CLI 0.166.0. The results apply to these versions and workflows. Rerun the checks
+after later changes.
 
 ## Helper and portable skill
 
-- The local unit/integration suite uses synthetic subprocesses to cover manual
-  coordination, CLI contracts, restricted adapters, ownership, cancellation,
-  bounded output, recovery, and exact report approvals.
-- The package was built and installed in a temporary virtual environment. Its
-  installed entry point worked outside the checkout. Runtime dependencies
+- The local unit and integration tests used synthetic subprocesses. They covered
+  manual coordination, CLI contracts, restricted adapters, ownership,
+  cancellation, output limits, recovery, and approvals of exact report bytes.
+- We built and installed the package in a temporary virtual environment. The
+  installed command worked outside the checkout. Its runtime dependencies
   remain limited to the Python standard library.
 - The released Agent Skills reference validator, `skills-ref==0.1.0` (command
-  `agentskills`), accepted the skill. CI runs the same development-only check.
-- The complete skill folder was copied outside the checkout; bundled
-  references and synthetic assets remained usable. Installation refused an
-  existing destination without overwriting its contents.
-- An independent agent used that copy with two synthetic local CLIs to run one
-  bounded review, inspect its report, and verify matching report hashes. This
-  validates orchestration mechanics; the deterministic report does not measure
-  model quality.
+  `agentskills`), accepted the skill. CI runs the same check as a development
+  tool; it adds no runtime dependency.
+- A complete copy of the skill worked outside the checkout, including its
+  references and synthetic assets. A second installation refused the existing
+  destination and left its contents unchanged.
+- An independent agent used that copy with two synthetic local CLIs. It ran one
+  review within the set limits, read the report, and checked matching report
+  hashes. The report came from deterministic test programs, so this checks
+  coordination without measuring model quality.
 
 ## Native Codex discovery
 
-The native app-server protocol was exercised with `initialize`, `initialized`,
-and `skills/list` with `forceReload: true`. No thread or model turn was started.
+We checked native discovery with the app-server protocol: `initialize`,
+`initialized`, and `skills/list` with `forceReload: true`. These calls started
+no thread or model turn.
 
-Both a copied skill in a temporary project's `.agents/skills` and this
-checkout's relative symlink were discovered. In each case the loader returned
-one enabled `collaborative-review` repo skill, the expected description, its
-resolved `SKILL.md` path, and the interface metadata from `agents/openai.yaml`.
-The loader reported no errors.
+The loader found both a copied skill in a temporary project's `.agents/skills`
+and this checkout's relative symlink. In each case it returned one enabled
+`collaborative-review` repository skill with the expected description. It also
+returned the resolved `SKILL.md` path and interface metadata from
+`agents/openai.yaml`. The loader reported no errors.
 
-An offline `codex debug prompt-input` check also included the skill in the
-initial metadata catalog. That command did not expand the skill body. It does
-not establish explicit activation, natural-language selection, or successful
-execution from a host conversation.
+An offline `codex debug prompt-input` check also listed the skill in the initial
+list of available skills. It left the skill body unexpanded. These are discovery
+checks only. Explicit activation, natural-language selection, and a successful
+review started from a host conversation remain untested.
 
 ## Restrictions and remaining checks
 
-Local help/version probes checked the CLI option names required by the
-adapters. Codex feature introspection confirmed all requested feature disables,
-including `view_image`. The adapter uses `--disable view_image`; the former
-`tools.view_image=false` setting is ignored by this Codex version. Initial and
-resume commands retain the same feature restrictions, and error events about
-ignored restrictions are rejected by the decoder.
+Local version and help commands checked the CLI option names that the adapters
+require. Codex reported all requested features as disabled, including
+`view_image`. The adapter uses `--disable view_image`; this Codex version ignores
+the former `tools.view_image=false` setting. Initial and resume commands use the
+same feature restrictions. The decoder rejects error events about ignored
+restrictions.
 
-A local, unauthenticated synthetic Responses endpoint captured the initial
-Codex `exec` request with the adapter's actual restrictions. The operating
-system denied network access except to localhost. The capture exposed an
-otherwise available `request_user_input` tool; the adapter now also sets
-`tools.experimental_request_user_input.enabled=false`. With that setting, the
-captured request advertised an empty tool list and no ignored-configuration
-warning. The endpoint deliberately returned an error without inference. This
-checks the installed CLI with fallback synthetic model metadata, not every
-provider/model catalog or a successful model response.
+A local synthetic Responses endpoint captured the initial Codex `exec` request
+with the adapter's actual restrictions. The endpoint required no authentication,
+and the operating system blocked network access except to localhost.
 
-These checks do not establish effective restrictions for every installed CLI
-or administrator configuration. Native Claude Code discovery and model-level
-skill selection have not been evaluated. No completed live two-provider review,
-quality improvement, cost reduction, or latency improvement is claimed.
+The first capture showed an available `request_user_input` tool. The adapter now
+also sets `tools.experimental_request_user_input.enabled=false`. With that
+setting, the captured request advertised an empty tool list and produced no
+warning about ignored configuration. The endpoint deliberately returned an
+error without inference.
 
-Use [NEXT_STEPS.md](../NEXT_STEPS.md) for the remaining integration work and
-[EVALUATION.md](../EVALUATION.md) for a comparison at matched combined budgets.
-Published task briefs are explicitly synthetic. Live session state and logs
-are not part of this snapshot or the repository history.
+This check used the installed CLI with fallback synthetic model metadata. It
+did not cover every provider or model catalog, or a successful model response.
+
+Restriction behavior can vary with the installed CLI and administrator
+settings; those combinations need separate checks. Native Claude Code discovery
+and model-level skill selection remain untested. No complete live review with
+both providers is recorded. Quality, cost, and latency improvements remain
+unmeasured.
+
+See [NEXT_STEPS.md](../NEXT_STEPS.md) for the remaining integration work. Use
+[EVALUATION.md](../EVALUATION.md) to compare approaches with the same combined
+budget. Published task briefs are labeled synthetic. This snapshot and the
+repository history exclude live session state and logs.
